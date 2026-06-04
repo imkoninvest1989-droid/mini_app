@@ -9,14 +9,28 @@ const TABS = [
   { key: 'price',    label: 'Narx',       icon: '🏷️' },
 ]
 
-const STATUS = {
-  pending:  { label: 'Kutilmoqda', color: '#F59E0B', bg: '#FFFBEB' },
-  accepted: { label: 'Qabul',      color: '#007A6B', bg: '#E8F5F3' },
-  rejected: { label: 'Rad etildi', color: '#EF4444', bg: '#FEF2F2' },
-  completed:{ label: 'Yakunlandi', color: '#3B82F6', bg: '#EFF6FF' },
+const STATUS_MAP = {
+  pending:      { label: 'Kutilmoqda',   color: '#F59E0B', bg: '#FFFBEB' },
+  accepted:     { label: 'Qabul qilindi',color: '#007A6B', bg: '#E8F5F3' },
+  pending_seller:{ label: 'Tasdiq kerak',color: '#F59E0B', bg: '#FFFBEB' },
+  in_delivery:  { label: 'Yetkazilmoqda',color: '#3B82F6', bg: '#EFF6FF' },
+  declined:     { label: 'Rad etildi',   color: '#EF4444', bg: '#FEF2F2' },
+  completed:    { label: 'Yakunlandi',   color: '#6B7280', bg: '#F3F4F6' },
+  rejected:     { label: 'Rad etildi',   color: '#EF4444', bg: '#FEF2F2' },
+  purchased:    { label: 'Sotib olindi', color: '#007A6B', bg: '#E8F5F3' },
 }
 
-// ── SWAP uchun kichik rasm + narx bloki ─────────────────────────
+function StatusBadge({ status }) {
+  const s = STATUS_MAP[status] || { label: status, color: '#9AA5B4', bg: '#F4F6F8' }
+  return (
+    <span style={{
+      background: s.bg, color: s.color,
+      fontSize: 10, fontWeight: 700,
+      padding: '3px 8px', borderRadius: 20, whiteSpace: 'nowrap', flexShrink: 0
+    }}>{s.label}</span>
+  )
+}
+
 function ItemThumb({ image, title, price, label }) {
   return (
     <div style={{ flex: 1, textAlign: 'center' }}>
@@ -31,90 +45,279 @@ function ItemThumb({ image, title, price, label }) {
   )
 }
 
-// ── Bitta taklif kartochkasi ─────────────────────────────────────
-function OfferCard({ item, type }) {
-  const navigate = useNavigate()
-  const st = STATUS[item.status] || STATUS.pending
+// ── Tugma komponenti ──────────────────────────────────────────────────
+function ActionBtn({ label, color, bg, onClick, loading }) {
+  return (
+    <button
+      onClick={onClick}
+      disabled={loading}
+      style={{
+        flex: 1, padding: '9px 8px', borderRadius: 10, border: 'none',
+        background: loading ? '#E5E7EB' : bg, color: loading ? '#9AA5B4' : color,
+        fontSize: 12, fontWeight: 700, cursor: loading ? 'not-allowed' : 'pointer',
+      }}
+    >
+      {loading ? '⏳' : label}
+    </button>
+  )
+}
+
+// ── ALMASHINUV kartochkasi ────────────────────────────────────────────
+function ExchangeCard({ item, initData, onRefresh }) {
+  const [loading, setLoading] = useState(false)
+  const isSender   = item._myRole === 'sender'
+  const myItem     = isSender
+    ? { title: item.fromItemTitle, image: item.fromItemImages?.[0], price: item.fromItemCoinValue }
+    : { title: item.toItemTitle,   image: item.toItemImages?.[0],   price: item.toItemCoinValue }
+  const theirItem  = isSender
+    ? { title: item.toItemTitle,   image: item.toItemImages?.[0],   price: item.toItemCoinValue }
+    : { title: item.fromItemTitle, image: item.fromItemImages?.[0], price: item.fromItemCoinValue }
+  const otherName  = isSender ? item.toUserName : item.fromUserName
   const date = item.createdAt?.seconds
-    ? new Date(item.createdAt.seconds * 1000).toLocaleDateString('uz-UZ')
-    : ''
+    ? new Date(item.createdAt.seconds * 1000).toLocaleDateString('uz-UZ') : ''
 
-  // ALMASHINUV
-  if (type === 'exchange') {
-    const isSender  = item._myRole === 'sender'
-    const myItem    = isSender
-      ? { title: item.fromItemTitle, image: item.fromItemImages?.[0], price: item.fromItemCoinValue }
-      : { title: item.toItemTitle,   image: item.toItemImages?.[0],   price: item.toItemCoinValue }
-    const theirItem = isSender
-      ? { title: item.toItemTitle,   image: item.toItemImages?.[0],   price: item.toItemCoinValue }
-      : { title: item.fromItemTitle, image: item.fromItemImages?.[0], price: item.fromItemCoinValue }
-    const otherName = isSender ? item.toUserName : item.fromUserName
-
-    return (
-      <div style={{ background: 'white', borderRadius: 14, border: '1px solid #EAEEF2', padding: 12 }}>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
-          <span style={{ fontSize: 12, fontWeight: 600, color: '#555' }}>
-            {isSender ? `${otherName} ga yuborgan` : `${otherName} dan taklif`}
-          </span>
-          <span style={{ background: st.bg, color: st.color, fontSize: 9, fontWeight: 700, padding: '3px 7px', borderRadius: 20 }}>
-            {st.label}
-          </span>
-        </div>
-
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <ItemThumb {...myItem} label="Meniki" />
-          <div style={{ fontSize: 20, color: '#9AA5B4', flexShrink: 0 }}>🔄</div>
-          <ItemThumb {...theirItem} label="Ularnikiː" />
-        </div>
-
-        {item.coinDifference > 0 && (
-          <div style={{ marginTop: 8, padding: '6px 10px', background: '#FFFBEB', borderRadius: 8, fontSize: 11, color: '#F59E0B', fontWeight: 600 }}>
-            💰 Farq: {item.coinDifference.toLocaleString()} koin
-          </div>
-        )}
-        {date && <p style={{ margin: '8px 0 0', fontSize: 10, color: '#C8D0D8' }}>{date}</p>}
-      </div>
-    )
+  const doAction = async (action) => {
+    setLoading(true)
+    try {
+      const r = await fetch(`${API_URL}/api/swaps/${item.id}/${action}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ initData }),
+      })
+      const d = await r.json()
+      if (d.success) onRefresh()
+      else alert(d.error || 'Xato yuz berdi')
+    } catch { alert('Server bilan ulanishda xato') }
+    finally { setLoading(false) }
   }
 
-  // SOTISH / NARX
-  const title     = item.itemTitle || item.title || 'Mahsulot'
-  const image     = item.itemImages?.[0] || item.images?.[0] || null
-  const fromName  = item.buyerName || item.fromUserName || 'Noma\'lum'
-  const price     = item.offerPrice || item.itemCoinPrice || item.coinPrice || 0
-  const origPrice = item.originalPrice || null
-
   return (
-    <div onClick={() => navigate(`/listing/${item.itemId || item.id}`)}
-      style={{ background: 'white', borderRadius: 14, overflow: 'hidden', border: '1px solid #EAEEF2', cursor: 'pointer', display: 'flex', alignItems: 'stretch' }}
-    >
-      <div style={{ width: 80, flexShrink: 0 }}>
-        {image
-          ? <img src={image} alt={title} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-          : <div style={{ width: '100%', height: '100%', background: '#F4F6F8', minHeight: 80, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 24, color: '#ccc' }}>📷</div>
-        }
+    <div style={{ background: 'white', borderRadius: 14, border: '1px solid #EAEEF2', padding: 12 }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
+        <span style={{ fontSize: 12, fontWeight: 600, color: '#555' }}>
+          {isSender ? `📤 ${otherName} ga yuborgan` : `📩 ${otherName} dan taklif`}
+        </span>
+        <StatusBadge status={item.status} />
       </div>
-      <div style={{ flex: 1, padding: 12, minWidth: 0 }}>
-        <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 8 }}>
-          <p style={{ margin: 0, fontSize: 13, fontWeight: 600, color: '#1E2730', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }}>{title}</p>
-          <span style={{ background: st.bg, color: st.color, fontSize: 9, fontWeight: 700, padding: '3px 7px', borderRadius: 20, whiteSpace: 'nowrap', flexShrink: 0 }}>{st.label}</span>
-        </div>
-        <p style={{ margin: '4px 0 0', fontSize: 11, color: '#9AA5B4' }}>
-          {type === 'sale' ? '🛍️' : '🏷️'} {fromName}
-        </p>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 6 }}>
-          <span style={{ fontSize: 13, fontWeight: 700, color: '#E8833A' }}>{price.toLocaleString()} koin</span>
-          {origPrice && origPrice !== price && (
-            <span style={{ fontSize: 11, color: '#9AA5B4', textDecoration: 'line-through' }}>{origPrice.toLocaleString()}</span>
-          )}
-        </div>
-        {date && <p style={{ margin: '4px 0 0', fontSize: 10, color: '#C8D0D8' }}>{date}</p>}
+
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+        <ItemThumb {...myItem} label="Meniki" />
+        <div style={{ fontSize: 20, color: '#9AA5B4', flexShrink: 0 }}>🔄</div>
+        <ItemThumb {...theirItem} label="Ularnikiː" />
       </div>
+
+      {item.coinDifference > 0 && (
+        <div style={{ marginTop: 8, padding: '6px 10px', background: '#FFFBEB', borderRadius: 8, fontSize: 11, color: '#F59E0B', fontWeight: 600 }}>
+          💰 Farq: {item.coinDifference.toLocaleString()} koin
+        </div>
+      )}
+
+      {date && <p style={{ margin: '8px 0 4px', fontSize: 10, color: '#C8D0D8' }}>{date}</p>}
+
+      {/* Qabul qiluvchi uchun tugmalar */}
+      {item.status === 'pending' && !isSender && (
+        <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>
+          <ActionBtn label="❌ Rad" color="#EF4444" bg="#FEF2F2" onClick={() => doAction('decline')} loading={loading} />
+          <ActionBtn label="✅ Qabul" color="white" bg="#007A6B" onClick={() => doAction('accept')} loading={loading} />
+        </div>
+      )}
+
+      {/* Yuborgan kishi uchun bekor qilish */}
+      {item.status === 'pending' && isSender && (
+        <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>
+          <ActionBtn label="🗑 Bekor qilish" color="#EF4444" bg="#FEF2F2" onClick={() => doAction('cancel')} loading={loading} />
+        </div>
+      )}
     </div>
   )
 }
 
-// ── Asosiy sahifa ────────────────────────────────────────────────
+// ── NARX TAKLIFI kartochkasi ─────────────────────────────────────────
+function PriceOfferCard({ item, initData, onRefresh }) {
+  const [loading, setLoading] = useState(false)
+  const isSeller  = item._myRole === 'seller'
+  const title     = item.itemTitle || 'Mahsulot'
+  const image     = item.itemImages?.[0] || null
+  const buyerName = item.buyerName || 'Xaridor'
+  const offerPrice   = item.offerPrice || 0
+  const originalPrice = item.originalPrice || 0
+  const discount  = originalPrice > 0 ? Math.round((originalPrice - offerPrice) / originalPrice * 100) : 0
+  const date = item.createdAt?.seconds
+    ? new Date(item.createdAt.seconds * 1000).toLocaleDateString('uz-UZ') : ''
+
+  const deadline = item.purchaseDeadline?.seconds
+    ? (() => {
+        const diff = item.purchaseDeadline.seconds * 1000 - Date.now()
+        if (diff <= 0) return 'Muddati o\'tdi'
+        const h = Math.floor(diff / 3600000)
+        const d = Math.floor(h / 24)
+        return d > 0 ? `${d} kun qoldi` : `${h} soat qoldi`
+      })()
+    : null
+
+  const doAction = async (action) => {
+    setLoading(true)
+    try {
+      const r = await fetch(`${API_URL}/api/offers/${item.id}/${action}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ initData }),
+      })
+      const d = await r.json()
+      if (d.success) onRefresh()
+      else alert(d.error || 'Xato yuz berdi')
+    } catch { alert('Server bilan ulanishda xato') }
+    finally { setLoading(false) }
+  }
+
+  return (
+    <div style={{ background: 'white', borderRadius: 14, overflow: 'hidden', border: '1px solid #EAEEF2' }}>
+      <div style={{ display: 'flex', alignItems: 'stretch' }}>
+        <div style={{ width: 80, flexShrink: 0 }}>
+          {image
+            ? <img src={image} alt={title} style={{ width: '100%', height: '100%', objectFit: 'cover', minHeight: 90 }} />
+            : <div style={{ width: '100%', minHeight: 90, background: '#F4F6F8', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 24, color: '#ccc' }}>📷</div>
+          }
+        </div>
+        <div style={{ flex: 1, padding: 12, minWidth: 0 }}>
+          <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 6 }}>
+            <p style={{ margin: 0, fontSize: 13, fontWeight: 600, color: '#1E2730', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }}>{title}</p>
+            <StatusBadge status={item.status} />
+          </div>
+
+          {isSeller && <p style={{ margin: '3px 0 0', fontSize: 11, color: '#9AA5B4' }}>👤 {buyerName}</p>}
+          {!isSeller && <p style={{ margin: '3px 0 0', fontSize: 11, color: '#9AA5B4' }}>🏷️ Siz yuborgan taklif</p>}
+
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 6 }}>
+            <span style={{ fontSize: 14, fontWeight: 800, color: '#E8833A' }}>{offerPrice.toLocaleString()} 🪙</span>
+            {originalPrice > 0 && (
+              <span style={{ fontSize: 11, color: '#9AA5B4', textDecoration: 'line-through' }}>{originalPrice.toLocaleString()}</span>
+            )}
+            {discount > 0 && (
+              <span style={{ background: '#FEF2F2', color: '#EF4444', fontSize: 10, fontWeight: 700, padding: '2px 6px', borderRadius: 8 }}>-{discount}%</span>
+            )}
+          </div>
+          {date && <p style={{ margin: '4px 0 0', fontSize: 10, color: '#C8D0D8' }}>{date}</p>}
+        </div>
+      </div>
+
+      {/* Sotuvchi: pending → Qabul / Rad tugmalari */}
+      {isSeller && item.status === 'pending' && (
+        <div style={{ display: 'flex', gap: 8, padding: '10px 12px', borderTop: '1px solid #F4F6F8' }}>
+          <ActionBtn label="❌ Rad etish" color="#EF4444" bg="#FEF2F2" onClick={() => doAction('decline')} loading={loading} />
+          <ActionBtn label="✅ Qabul qilish" color="white" bg="#007A6B" onClick={() => doAction('accept')} loading={loading} />
+        </div>
+      )}
+
+      {/* Sotuvchi: accepted → xaridor kutilmoqda */}
+      {isSeller && item.status === 'accepted' && (
+        <div style={{ padding: '8px 12px', borderTop: '1px solid #F4F6F8', background: '#F0FAF9', fontSize: 12, color: '#007A6B', fontWeight: 600 }}>
+          ⏳ Taklif qabul qilindi. Xaridor sotib olishini kutmoqda...
+        </div>
+      )}
+
+      {/* Xaridor: accepted → "Sotib olish" tugmasi */}
+      {!isSeller && item.status === 'accepted' && (
+        <div style={{ padding: '10px 12px', borderTop: '1px solid #F4F6F8' }}>
+          {deadline && (
+            <div style={{ marginBottom: 8, padding: '5px 10px', background: '#FFFBEB', borderRadius: 8, fontSize: 11, color: '#F59E0B', fontWeight: 600 }}>
+              ⏱ Sotib olish muddati: {deadline}
+            </div>
+          )}
+          <ActionBtn label="🛍️ Sotib olish" color="white" bg="#E8833A" onClick={() => doAction('buy')} loading={loading} />
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ── SOTISH BUYURTMASI kartochkasi ─────────────────────────────────────
+function SaleOrderCard({ item, initData, onRefresh }) {
+  const [loading, setLoading] = useState(false)
+  const isSeller = item._myRole === 'seller'
+  const title    = item.itemTitle || 'Mahsulot'
+  const image    = item.itemImages?.[0] || null
+  const price    = item.escrowCoins || item.itemCoinPrice || 0
+  const personName = isSeller ? (item.buyerName || 'Xaridor') : (item.sellerName || 'Sotuvchi')
+  const date = item.createdAt?.seconds
+    ? new Date(item.createdAt.seconds * 1000).toLocaleDateString('uz-UZ') : ''
+
+  const doAction = async (action) => {
+    setLoading(true)
+    try {
+      const r = await fetch(`${API_URL}/api/orders/${item.id}/${action}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ initData }),
+      })
+      const d = await r.json()
+      if (d.success) onRefresh()
+      else alert(d.error || 'Xato yuz berdi')
+    } catch { alert('Server bilan ulanishda xato') }
+    finally { setLoading(false) }
+  }
+
+  return (
+    <div style={{ background: 'white', borderRadius: 14, overflow: 'hidden', border: '1px solid #EAEEF2' }}>
+      <div style={{ display: 'flex', alignItems: 'stretch' }}>
+        <div style={{ width: 80, flexShrink: 0 }}>
+          {image
+            ? <img src={image} alt={title} style={{ width: '100%', height: '100%', objectFit: 'cover', minHeight: 90 }} />
+            : <div style={{ width: '100%', minHeight: 90, background: '#F4F6F8', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 24, color: '#ccc' }}>📷</div>
+          }
+        </div>
+        <div style={{ flex: 1, padding: 12, minWidth: 0 }}>
+          <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 6 }}>
+            <p style={{ margin: 0, fontSize: 13, fontWeight: 600, color: '#1E2730', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }}>{title}</p>
+            <StatusBadge status={item.status} />
+          </div>
+          <p style={{ margin: '3px 0 0', fontSize: 11, color: '#9AA5B4' }}>
+            {isSeller ? `🛍️ Xaridor: ${personName}` : `🏪 Sotuvchi: ${personName}`}
+          </p>
+          <div style={{ marginTop: 6 }}>
+            <span style={{ fontSize: 14, fontWeight: 800, color: '#007A6B' }}>{price.toLocaleString()} 🪙</span>
+            {item.isOfferOrder && (
+              <span style={{ marginLeft: 6, fontSize: 10, color: '#9AA5B4' }}>
+                (asl: {item.itemCoinPrice?.toLocaleString()})
+              </span>
+            )}
+          </div>
+          {date && <p style={{ margin: '4px 0 0', fontSize: 10, color: '#C8D0D8' }}>{date}</p>}
+        </div>
+      </div>
+
+      {/* Sotuvchi: pending_seller → "Tasdiqlash" tugmasi */}
+      {isSeller && (item.status === 'pending_seller' || item.status === 'pending') && (
+        <div style={{ display: 'flex', gap: 8, padding: '10px 12px', borderTop: '1px solid #F4F6F8' }}>
+          <ActionBtn label="❌ Bekor" color="#EF4444" bg="#FEF2F2" onClick={() => doAction('cancel')} loading={loading} />
+          <ActionBtn label="✅ Tasdiqlash — Yuboring!" color="white" bg="#007A6B" onClick={() => doAction('confirm')} loading={loading} />
+        </div>
+      )}
+
+
+      {/* Xaridor: pending_seller/pending → kutilmoqda + Bekor tugmasi */}
+      {!isSeller && (item.status === 'pending_seller' || item.status === 'pending') && (
+        <div style={{ display: 'flex', gap: 8, padding: '10px 12px', borderTop: '1px solid #F4F6F8' }}>
+          <div style={{ flex: 1, padding: '8px 10px', background: '#F0FAF9', borderRadius: 10, fontSize: 12, color: '#007A6B', fontWeight: 600 }}>
+            ⏳ Sotuvchi tasdiqlashini kutmoqda...
+          </div>
+          <ActionBtn label="❌ Bekor" color="#EF4444" bg="#FEF2F2" onClick={() => doAction('cancel')} loading={loading} />
+        </div>
+      )}
+      {/* Xaridor: in_delivery → "Qabul qildim" tugmasi */}
+      {!isSeller && item.status === 'in_delivery' && (
+        <div style={{ padding: '10px 12px', borderTop: '1px solid #F4F6F8' }}>
+          <div style={{ marginBottom: 8, padding: '6px 10px', background: '#EFF6FF', borderRadius: 8, fontSize: 11, color: '#3B82F6', fontWeight: 600 }}>
+            📦 Sotuvchi mahsulotni yo'lladi. Qabul qilganingizdan so'ng coinlar sotuvchiga o'tkaziladi.
+          </div>
+          <ActionBtn label="✅ Qabul qildim — Coinlarni chiqar" color="white" bg="#007A6B" onClick={() => doAction('received')} loading={loading} />
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ── Asosiy sahifa ─────────────────────────────────────────────────────
 export default function Offers({ user, initData, onRead }) {
   const navigate  = useNavigate()
   const location  = useLocation()
@@ -122,12 +325,7 @@ export default function Offers({ user, initData, onRead }) {
   const [data, setData]       = useState({ priceOffers: [], saleOrders: [], exchanges: [] })
   const [loading, setLoading] = useState(true)
 
-  useEffect(() => {
-    const seg = location.pathname.split('/').pop()
-    if (TABS.find(t => t.key === seg)) setTab(seg)
-  }, [location.pathname])
-
-  useEffect(() => {
+  const fetchOffers = () => {
     if (!initData) return
     setLoading(true)
     fetch(`${API_URL}/api/offers`, {
@@ -139,7 +337,14 @@ export default function Offers({ user, initData, onRead }) {
       .then(d => { if (d.success) { setData(d.data); onRead?.() } })
       .catch(() => {})
       .finally(() => setLoading(false))
-  }, [initData])
+  }
+
+  useEffect(() => {
+    const seg = location.pathname.split('/').pop()
+    if (TABS.find(t => t.key === seg)) setTab(seg)
+  }, [location.pathname])
+
+  useEffect(() => { fetchOffers() }, [initData])
 
   const items = tab === 'exchange' ? data.exchanges
     : tab === 'sale' ? data.saleOrders
@@ -212,7 +417,15 @@ export default function Offers({ user, initData, onRead }) {
           </div>
         ) : (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-            {items.map(item => <OfferCard key={item.id} item={item} type={tab} />)}
+            {tab === 'exchange' && items.map(item =>
+              <ExchangeCard key={item.id} item={item} initData={initData} onRefresh={fetchOffers} />
+            )}
+            {tab === 'price' && items.map(item =>
+              <PriceOfferCard key={item.id} item={item} initData={initData} onRefresh={fetchOffers} />
+            )}
+            {tab === 'sale' && items.map(item =>
+              <SaleOrderCard key={item.id} item={item} initData={initData} onRefresh={fetchOffers} />
+            )}
           </div>
         )}
       </div>
