@@ -6,7 +6,8 @@ dotenv.config()
 
 const TOKEN = process.env.TELEGRAM_BOT_TOKEN
 const MINI_APP_URL = process.env.TELEGRAM_MINI_APP_URL || 'http://localhost:5173'
-const BACKEND_URL = process.env.BACKEND_URL || 'http://localhost:3000'
+const BACKEND_URL  = process.env.BACKEND_URL || 'http://localhost:3000'
+const BOT_USERNAME = process.env.BOT_USERNAME || 'Zoya_app_bot'
 
 if (!TOKEN) {
   console.error('❌ TELEGRAM_BOT_TOKEN topilmadi!')
@@ -19,13 +20,29 @@ console.log('🤖 ZOYA Bot ishga tushdi...')
 // ═══════════════════════════════════════════════════════════════════
 // /START
 // ═══════════════════════════════════════════════════════════════════
-bot.onText(/\/start/, (msg) => {
-  const chatId = msg.chat.id
+bot.onText(/\/start(.*)/, (msg, match) => {
+  const chatId    = msg.chat.id
   const firstName = msg.from.first_name || 'Foydalanuvchi'
+  const param     = (match[1] || '').trim()
 
+  // Deep link: /start item_ITEMID — Mini App ni o'sha e'lon bilan ochish
+  if (param.startsWith('item_')) {
+    const itemId  = param.replace('item_', '')
+    const itemUrl = `${MINI_APP_URL}/listing/${itemId}`
+    return bot.sendMessage(chatId, `👗 E'lonni ko'rish uchun quyidagi tugmani bosing:`, {
+      reply_markup: {
+        inline_keyboard: [[{
+          text: "🛍️ ZOYA da ko'rish",
+          web_app: { url: itemUrl }
+        }]]
+      }
+    })
+  }
+
+  // Oddiy /start
   bot.sendMessage(
     chatId,
-    `Salom ${firstName}! 👋\n\nZOYA kiyim almashish platformasiga xush kelibsiz!\n\n📱 Telefon raqamingizni ulang — shunda ilovadagi akkauntingiz bot bilan bog'lanadi.`,
+    `Salom ${firstName}! 👋\n\nZOYA kiyim almashish platformasiga xush kelibsiz!\n\n📱 Telefon raqamingizni ulang — shunda ilovadagi akkauntingiz bot bilan bog\'lanadi.`,
     {
       reply_markup: {
         keyboard: [[{ text: '📱 Telefon raqamimni ulash', request_contact: true }]],
@@ -146,6 +163,79 @@ bot.onText(/\/help/, (msg) => {
       }
     }
   )
+})
+
+// ═══════════════════════════════════════════════════════════════════
+// INLINE MODE — @Zoya_app_bot <qidiruv> yozganda e'lonlar chiqadi
+// ═══════════════════════════════════════════════════════════════════
+bot.on('inline_query', async (query) => {
+  const queryText = query.query.trim()
+
+  try {
+    const response = await axios.get(`${BACKEND_URL}/api/listings`, {
+      params: { search: queryText || '', limit: 20 }
+    })
+
+    const listings = response.data.listings || []
+
+    const results = listings.map(item => {
+      const image     = item.images?.[0] || null
+      const price     = (item.coinPrice || 0).toLocaleString()
+      const condition = item.condition === 'new' ? '🆕 Yangi'
+        : item.condition === 'like_new' ? '✨ Yangiday' : '👕 Ishlatilgan'
+      const size      = item.size ? `  📐 ${item.size}` : ''
+      // t.me havolasi — Telegram ichida Mini App ni ochadi (brauzer emas)
+      const itemUrl = `https://t.me/${BOT_USERNAME}?startapp=item_${item.id}`
+
+      const caption =
+        `👗 *${item.title}*\n\n` +
+        `💰 Narxi: *${price} koin*\n` +
+        `${condition}${size}\n` +
+        (item.description ? `\n📝 ${item.description.slice(0, 100)}${item.description.length > 100 ? '...' : ''}\n` : '') +
+        `\n👤 Sotuvchi: ${item.userName || "Noma'lum"}`
+
+      const miniAppUrl = `${MINI_APP_URL}/listing/${item.id}`
+      const keyboard = {
+        inline_keyboard: [[
+          { text: "🛍️ ZOYA da ochish", url: miniAppUrl },
+        ]]
+      }
+
+      // base64 bo'lsa ishlatib bo'lmaydi — faqat https:// URL kerak
+      const isValidUrl = image && image.startsWith('http')
+
+      if (isValidUrl) {
+        return {
+          type: 'photo', id: item.id,
+          photo_url: image, thumb_url: image,
+          photo_width: 800, photo_height: 800,
+          title: item.title,
+          caption, parse_mode: 'Markdown',
+          reply_markup: keyboard,
+        }
+      } else {
+        return {
+          type: 'article', id: item.id,
+          title: `${item.title} — ${price} koin`,
+          description: `${condition}${size} • ${item.userName || ''}`,
+          input_message_content: { message_text: caption, parse_mode: 'Markdown' },
+          reply_markup: keyboard,
+        }
+      }
+    })
+
+    console.log(`🔍 Inline: "${queryText}" → ${results.length} ta natija`)
+    results.forEach(r => console.log(`   ${r.type}: ${r.title} | img: ${r.photo_url ? r.photo_url.slice(0,40) : 'yo\'q'}`))
+
+    await bot.answerInlineQuery(query.id, results, {
+      cache_time: 0,
+      is_personal: true,
+    })
+
+  } catch (error) {
+    console.error('inline_query error:', error.message)
+    await bot.answerInlineQuery(query.id, [], { cache_time: 5 })
+  }
 })
 
 // ═══════════════════════════════════════════════════════════════════

@@ -260,7 +260,6 @@ function BuyModal({ listing, user, initData, canAfford, onClose, onSuccess }) {
 function SwapModal({ listing, user, initData, onClose, onSuccess }) {
   const [myListings, setMyListings] = useState([])
   const [selected, setSelected]     = useState(null)
-  const [addCoins, setAddCoins]     = useState(0)
   const [loadingList, setLoadingList] = useState(true)
   const [loading, setLoading]       = useState(false)
   const [error, setError]           = useState(null)
@@ -282,7 +281,7 @@ function SwapModal({ listing, user, initData, onClose, onSuccess }) {
     try {
       const r = await fetch(`${API_URL}/api/swaps`, {
         method:'POST', headers:{'Content-Type':'application/json'},
-        body: JSON.stringify({ initData, toItemId: listing.id, fromItemId: selected.id, addCoins })
+        body: JSON.stringify({ initData, toItemId: listing.id, fromItemId: selected.id, addCoins: 0 })
       })
       const d = await r.json()
       if (d.success) onSuccess()
@@ -291,7 +290,14 @@ function SwapModal({ listing, user, initData, onClose, onSuccess }) {
     finally { setLoading(false) }
   }
 
-  const priceDiff = selected ? Math.abs((selected.coinPrice || 0) - (listing.coinPrice || 0)) + addCoins : 0
+  // Avtomatik hisoblash: selected (meniki) vs listing (ularnikiː)
+  const myPrice    = selected?.coinPrice || 0
+  const theirPrice = listing.coinPrice || 0
+  const rawDiff    = myPrice - theirPrice
+  const priceDiff  = Math.abs(rawDiff)
+  // rawDiff < 0 → meniki arzonroq → men farqni to'layman
+  // rawDiff > 0 → meniki qimmatroq → u tomon farqni to'laydi
+  const iPay       = rawDiff < 0
 
   return (
     <ModalWrap onClose={onClose}>
@@ -340,18 +346,19 @@ function SwapModal({ listing, user, initData, onClose, onSuccess }) {
         </div>
       )}
 
-      <div style={{ marginBottom:14 }}>
-        <p style={{ fontSize:12, fontWeight:700, color:'#9AA5B4', letterSpacing:'0.5px', margin:'0 0 8px' }}>QO'SHIMCHA KOIN (ixtiyoriy)</p>
-        <input type="number" value={addCoins} min={0}
-          onChange={e => setAddCoins(Math.max(0, parseInt(e.target.value) || 0))}
-          style={{ width:'100%', padding:'11px 14px', border:'1px solid #EAEEF2', borderRadius:10, fontSize:14, boxSizing:'border-box' }}
-          placeholder="0"
-        />
-      </div>
-
-      {selected && priceDiff > 0 && (
+      {selected && priceDiff === 0 && (
+        <div style={{ background:'#E8F5F3', borderRadius:10, padding:'10px 14px', marginBottom:14, fontSize:12, color:'#007A6B', fontWeight:600 }}>
+          ✅ Narxlar teng — qo'shimcha coin kerak emas
+        </div>
+      )}
+      {selected && priceDiff > 0 && iPay && (
         <div style={{ background:'#FFFBEB', borderRadius:10, padding:'10px 14px', marginBottom:14, fontSize:12, color:'#F59E0B', fontWeight:600 }}>
-          💰 Narx farqi: {priceDiff.toLocaleString()} koin
+          💰 Sizning e'loningiz {priceDiff.toLocaleString()} koin arzonroq — siz farqni to'laysiz (balansingizdan ushlanadi)
+        </div>
+      )}
+      {selected && priceDiff > 0 && !iPay && (
+        <div style={{ background:'#EFF6FF', borderRadius:10, padding:'10px 14px', marginBottom:14, fontSize:12, color:'#3B82F6', fontWeight:600 }}>
+          💰 Sizning e'loningiz {priceDiff.toLocaleString()} koin qimmatroq — u tomon farqni to'laydi
         </div>
       )}
 

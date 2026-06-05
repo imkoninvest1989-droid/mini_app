@@ -1,6 +1,176 @@
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 
+// ── COIN PAKETLARI ─────────────────────────────────────────────────
+const PACKAGES = [
+  { coins: 10000,  bonus: 0,    price: 10000,  label: '10 000'  },
+  { coins: 25000,  bonus: 1000, price: 25000,  label: '25 000'  },
+  { coins: 50000,  bonus: 3000, price: 50000,  label: '50 000'  },
+  { coins: 100000, bonus: 8000, price: 100000, label: '100 000' },
+]
+const CARD_NUMBER   = '5614681004895458'
+const TG_USERNAME   = 'zoya_coin_tulov'
+
+function BuyCoinsModal({ user, initData, onClose }) {
+  const [selected, setSelected]   = useState(1)
+  const [loading, setLoading]     = useState(false)
+  const [copied, setCopied]       = useState(false)
+  const [success, setSuccess]     = useState(false)
+  const pkg = PACKAGES[selected]
+  const totalCoins = pkg.coins + pkg.bonus
+
+  const copyCard = () => {
+    navigator.clipboard?.writeText(CARD_NUMBER)
+    setCopied(true)
+    setTimeout(() => setCopied(false), 1500)
+  }
+
+  const sendReceipt = async () => {
+    setLoading(true)
+    try {
+      await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:3000'}/api/coin-request`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ initData, coins: pkg.coins, bonus: pkg.bonus, price: pkg.price }),
+      })
+      const msg = encodeURIComponent(
+        `💳 Coin so'rov\n\n👤 ${user.fullName} (${user.zoyaId || ''})\n🪙 Coin: ${pkg.coins}${pkg.bonus ? ` +${pkg.bonus} bonus` : ''}\n💰 Summa: ${pkg.price.toLocaleString()} so'm\n\n✅ To'lov cheki:`
+      )
+      window.Telegram?.WebApp?.openTelegramLink(`https://t.me/${TG_USERNAME}?text=${msg}`)
+      setSuccess(true)
+    } catch (e) {
+      alert('Xato: ' + e.message)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const fmt = n => n.toLocaleString()
+
+  if (success) return (
+    <div style={{ position:'fixed',inset:0,background:'rgba(0,0,0,0.5)',zIndex:1000,display:'flex',alignItems:'center',justifyContent:'center',padding:'0 20px' }}>
+      <div style={{ background:'white',borderRadius:20,padding:28,textAlign:'center',maxWidth:320,width:'100%' }}>
+        <div style={{ fontSize:52,marginBottom:12 }}>🪙</div>
+        <p style={{ fontSize:18,fontWeight:800,color:'#1E2730',margin:'0 0 8px' }}>So'rov yuborildi!</p>
+        <p style={{ fontSize:13,color:'#9AA5B4',lineHeight:1.5,margin:'0 0 20px' }}>
+          To'lov chekini Telegramga yuboring. Adminlar 24 soat ichida coinlarni qo'shadi.
+        </p>
+        <div style={{ background:'#E8F5F3',borderRadius:12,padding:'10px 14px',marginBottom:20,fontSize:12,color:'#007A6B',fontWeight:600 }}>
+          ⏰ 24 soat ichida {fmt(totalCoins)} 🪙 balansingizga o'tkaziladi
+        </div>
+        <button onClick={onClose} style={{ width:'100%',padding:'13px',background:'#007A6B',color:'white',border:'none',borderRadius:12,fontSize:15,fontWeight:700,cursor:'pointer' }}>
+          Yaxshi
+        </button>
+      </div>
+    </div>
+  )
+
+  return (
+    <div style={{ position:'fixed',inset:0,background:'rgba(0,0,0,0.55)',zIndex:1000,display:'flex',alignItems:'flex-end' }}>
+      <div style={{ background:'white',borderRadius:'20px 20px 0 0',width:'100%',maxHeight:'92vh',overflowY:'auto',paddingBottom:24 }}>
+        {/* Header */}
+        <div style={{ display:'flex',alignItems:'center',justifyContent:'space-between',padding:'16px 20px 12px',borderBottom:'1px solid #F1F4F6',position:'sticky',top:0,background:'white',zIndex:1 }}>
+          <p style={{ margin:0,fontSize:16,fontWeight:700,color:'#1E2730' }}>🪙 Coin sotib olish</p>
+          <button onClick={onClose} style={{ background:'#F4F6F8',border:'none',borderRadius:50,width:30,height:30,cursor:'pointer',fontSize:16,display:'flex',alignItems:'center',justifyContent:'center' }}>✕</button>
+        </div>
+
+        <div style={{ padding:'14px 16px' }}>
+
+          {/* Tushuntirish */}
+          <div style={{ background:'#F0FAF5',borderRadius:12,padding:'10px 14px',marginBottom:16,fontSize:12,color:'#007A6B',display:'flex',gap:8 }}>
+            <span>💡</span>
+            <span>Coinlar platformada kiyim sotib olish va almashinuv uchun ishlatiladi. 1 koin = 1 so'm.</span>
+          </div>
+
+          {/* Paketlar */}
+          <p style={{ fontSize:11,fontWeight:700,color:'#9AA5B4',letterSpacing:'0.5px',margin:'0 0 10px' }}>PAKETNI TANLANG</p>
+          <div style={{ display:'grid',gridTemplateColumns:'1fr 1fr',gap:10,marginBottom:16 }}>
+            {PACKAGES.map((p, i) => {
+              const active = selected === i
+              return (
+                <div key={i} onClick={() => setSelected(i)} style={{
+                  border: active ? '2px solid #007A6B' : '1.5px solid #EAEEF2',
+                  borderRadius:14, padding:'12px 10px', cursor:'pointer',
+                  background: active ? '#F0FAF5' : 'white', position:'relative', textAlign:'center',
+                }}>
+                  {p.bonus > 0 && (
+                    <div style={{ position:'absolute',top:6,right:6,background:'#EF4444',color:'white',fontSize:9,fontWeight:700,borderRadius:20,padding:'2px 6px' }}>
+                      +{p.bonus.toLocaleString()}
+                    </div>
+                  )}
+                  <div style={{ fontSize:24,marginBottom:4 }}>🪙</div>
+                  <div style={{ fontSize:15,fontWeight:900,color: active ? '#007A6B' : '#1E2730' }}>{p.label}</div>
+                  <div style={{ fontSize:11,color: active ? '#007A6B' : '#9AA5B4',marginTop:2 }}>{fmt(p.price)} so'm</div>
+                </div>
+              )
+            })}
+          </div>
+
+          {/* Jami */}
+          <div style={{ background:'linear-gradient(135deg,#FFF8E1,#FFF3CD)',borderRadius:14,padding:'14px 16px',marginBottom:16 }}>
+            <div style={{ display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom: pkg.bonus ? 8 : 0 }}>
+              <span style={{ fontSize:13,color:'#9AA5B4' }}>Coin miqdori</span>
+              <span style={{ fontSize:18,fontWeight:900,color:'#FFB300' }}>{fmt(totalCoins)} 🪙</span>
+            </div>
+            {pkg.bonus > 0 && (
+              <div style={{ display:'flex',justifyContent:'space-between',marginBottom:8 }}>
+                <span style={{ fontSize:12,color:'#4CAF50' }}>Bonus:</span>
+                <span style={{ fontSize:12,fontWeight:700,color:'#4CAF50' }}>+{fmt(pkg.bonus)} 🪙</span>
+              </div>
+            )}
+            <div style={{ height:1,background:'#E0E0E0',margin:'8px 0' }} />
+            <div style={{ display:'flex',justifyContent:'space-between',alignItems:'center' }}>
+              <span style={{ fontSize:13,fontWeight:700,color:'#1E2730' }}>To'lov summasi</span>
+              <span style={{ fontSize:17,fontWeight:900,color:'#1E2730' }}>{fmt(pkg.price)} so'm</span>
+            </div>
+          </div>
+
+          {/* Karta */}
+          <p style={{ fontSize:11,fontWeight:700,color:'#9AA5B4',letterSpacing:'0.5px',margin:'0 0 10px' }}>TO'LOV KARTASI</p>
+          <div style={{ background:'white',borderRadius:14,border:'1px solid #EAEEF2',overflow:'hidden',marginBottom:16 }}>
+            <div style={{ background:'linear-gradient(135deg,#1B5E20,#2E7D32,#43A047)',padding:'18px 20px' }}>
+              <div style={{ fontSize:26,marginBottom:10 }}>💳</div>
+              <div style={{ fontSize:20,fontWeight:800,color:'white',letterSpacing:2 }}>{CARD_NUMBER}</div>
+              <div style={{ fontSize:11,color:'rgba(255,255,255,0.7)',marginTop:6,letterSpacing:1 }}>ZOYA Pay</div>
+            </div>
+            <button onClick={copyCard} style={{
+              width:'100%',padding:'12px',background:'white',border:'none',
+              color:'#007A6B',fontSize:13,fontWeight:700,cursor:'pointer',
+              display:'flex',alignItems:'center',justifyContent:'center',gap:6,
+            }}>
+              {copied ? '✓ Nusxalandi!' : '⎘ Karta raqamini nusxalash'}
+            </button>
+          </div>
+
+          {/* Qadamlar */}
+          <div style={{ background:'white',borderRadius:14,border:'1px solid #EAEEF2',padding:'14px 16px',marginBottom:16 }}>
+            {[
+              `Yuqoridagi kartaga ${fmt(pkg.price)} so'm o'tkazing`,
+              "To'lov chekini (screenshot) saqlang",
+              'Quyidagi tugmani bosib chekni Telegramga yuboring',
+            ].map((text, i) => (
+              <div key={i} style={{ display:'flex',gap:10,marginBottom: i < 2 ? 12 : 0 }}>
+                <div style={{ width:24,height:24,borderRadius:'50%',background:'#007A6B',display:'flex',alignItems:'center',justifyContent:'center',color:'white',fontSize:11,fontWeight:800,flexShrink:0 }}>{i+1}</div>
+                <p style={{ margin:0,fontSize:12,color:'#555',lineHeight:1.5 }}>{text}</p>
+              </div>
+            ))}
+          </div>
+
+          {/* Tugma */}
+          <button onClick={sendReceipt} disabled={loading} style={{
+            width:'100%',padding:'15px',background: loading ? '#ccc' : '#007A6B',
+            color:'white',border:'none',borderRadius:14,
+            fontSize:15,fontWeight:700,cursor: loading ? 'not-allowed' : 'pointer',
+            display:'flex',alignItems:'center',justifyContent:'center',gap:8,
+          }}>
+            {loading ? '⏳ Yuborilmoqda...' : '✈️ Chekni Telegramga yuborish'}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000'
 
 const LANGS = [
@@ -15,6 +185,7 @@ export default function Profile({ user, initData }) {
   const [showLangPicker, setShowLangPicker] = useState(false)
   const [copied, setCopied] = useState(false)
   const [offerCounts, setOfferCounts] = useState({ exchange: 0, sale: 0, price: 0 })
+  const [showBuyCoins, setShowBuyCoins] = useState(false)
 
   // ── Takliflarni yuklash ──────────────────────────────────────
   useEffect(() => {
@@ -162,6 +333,7 @@ export default function Profile({ user, initData }) {
 
   return (
     <div style={S.page}>
+      {showBuyCoins && <BuyCoinsModal user={user} initData={initData} onClose={() => setShowBuyCoins(false)} />}
 
       {/* ── HERO ────────────────────────────────────────────────── */}
       <div style={S.hero}>
@@ -184,6 +356,11 @@ export default function Profile({ user, initData }) {
             <div style={S.balanceLabel}>KOIN</div>
             <div style={S.balanceVal}>{coins.toLocaleString()}</div>
             <div style={S.balanceSub}>🪙 Asosiy balans</div>
+            <button onClick={() => setShowBuyCoins(true)} style={{
+              marginTop:8, background:'rgba(255,255,255,0.18)', border:'none',
+              borderRadius:8, padding:'5px 10px', color:'white',
+              fontSize:10, fontWeight:700, cursor:'pointer', width:'100%',
+            }}>+ Coin sotib olish</button>
           </div>
           <div style={{...S.balanceCard, flex:'none', minWidth:120}}>
             <div style={S.balanceLabel}>REYTING</div>

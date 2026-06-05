@@ -18,17 +18,79 @@ admin.initializeApp({
     projectId: process.env.FIREBASE_PROJECT_ID,
     privateKey: process.env.FIREBASE_PRIVATE_KEY.replace(/\\n/g, '\n'),
     clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
-  })
+  }),
+  storageBucket: process.env.FIREBASE_STORAGE_BUCKET,
 })
-const db = admin.firestore()
+const db      = admin.firestore()
+const bucket  = admin.storage().bucket()
 
 // ═══════════════════════════════════════════════════════════════════
 // EXPRESS SETUP
 // ═══════════════════════════════════════════════════════════════════
 const app = express()
 app.use(cors())
-app.use(express.json())
+app.use(express.json({ limit: '20mb' }))
+app.use(express.urlencoded({ limit: '20mb', extended: true }))
 const PORT = process.env.PORT || 3000
+
+// ═══════════════════════════════════════════════════════════════════
+// HELPER: base64 rasmni Firebase Storage ga yuklash
+// ═══════════════════════════════════════════════════════════════════
+async function uploadBase64Image(base64String, uid, filename) {
+  // base64 dan buffer olish
+  const matches = base64String.match(/^data:([A-Za-z-+/]+);base64,(.+)$/)
+  if (!matches) throw new Error('Noto\'g\'ri rasm formati')
+
+  const mimeType  = matches[1]
+  const imageData = Buffer.from(matches[2], 'base64')
+  const ext       = mimeType.includes('png') ? 'png' : 'jpg'
+  const filePath  = `items/${uid}/${filename}.${ext}`
+
+  const file = bucket.file(filePath)
+  await file.save(imageData, {
+    metadata: { contentType: mimeType },
+    resumable: false,
+  })
+
+  // Public URL olish
+  await file.makePublic()
+  const publicUrl = `https://storage.googleapis.com/${bucket.name}/${filePath}`
+  return publicUrl
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// HELPER: Telegram bildirishnoma yuborish
+// ═══════════════════════════════════════════════════════════════════
+const TG_TOKEN   = process.env.TELEGRAM_BOT_TOKEN
+const MINI_APP_URL = process.env.TELEGRAM_MINI_APP_URL || 'http://localhost:5173'
+
+async function notify(telegramId, text, buttons = []) {
+  if (!TG_TOKEN || !telegramId) return
+  try {
+    const body = {
+      chat_id:    telegramId,
+      text,
+      parse_mode: 'Markdown',
+    }
+    if (buttons.length > 0) {
+      body.reply_markup = { inline_keyboard: [buttons] }
+    }
+    await fetch(`https://api.telegram.org/bot${TG_TOKEN}/sendMessage`, {
+      method:  'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body:    JSON.stringify(body),
+    })
+  } catch (e) {
+    console.error('notify error:', e.message)
+  }
+}
+
+// telegramId ni uid orqali olish
+async function getTelegramIdByUid(uid) {
+  const snap = await db.collection('users').where('uid', '==', uid).limit(1).get()
+  if (snap.empty) return null
+  return snap.docs[0].data().telegramId || null
+}
 
 // ═══════════════════════════════════════════════════════════════════
 // HELPER: telefon raqamni normalize qilish
@@ -245,17 +307,29 @@ app.post('/api/user-profile', async (req, res) => {
 // ═══════════════════════════════════════════════════════════════════
 app.get('/api/listings', async (req, res) => {
   try {
-    const { category, gender, limit = 20 } = req.query
+    const { category, gender, search, limit = 20 } = req.query
 
     let query = db.collection('items').where('status', '==', 'active')
 
     if (category) query = query.where('category', '==', category)
     if (gender) query = query.where('gender', '==', gender)
 
-    const snapshot = await query.limit(parseInt(limit)).get()
-    const listings = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }))
+    const snapshot = await query.limit(parseInt(limit) * 3).get()
+    let listings = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }))
 
-    console.log(`📋 GET /api/listings — ${listings.length} ta`)
+    // Qidiruv — title va description bo'yicha (case-insensitive)
+    if (search) {
+      const q = search.toLowerCase()
+      listings = listings.filter(l =>
+        l.title?.toLowerCase().includes(q) ||
+        l.description?.toLowerCase().includes(q) ||
+        l.category?.toLowerCase().includes(q)
+      ).slice(0, parseInt(limit))
+    } else {
+      listings = listings.slice(0, parseInt(limit))
+    }
+
+    console.log(`📋 GET /api/listings${search ? ` [${search}]` : ''} — ${listings.length} ta`)
     res.json({ success: true, listings })
 
   } catch (error) {
@@ -313,6 +387,20 @@ app.post('/api/listings', async (req, res) => {
 
     const userData = userSnap.docs[0].data()
 
+    // Rasmlarni Firebase Storage ga yuklash
+    let imageUrls = []
+    if (images && images.length > 0) {
+      const timestamp = Date.now()
+      imageUrls = await Promise.all(
+        images.map((img, i) => {
+          // Agar allaqachon URL bo'lsa (http) — to'g'ridan ishlatish
+          if (img.startsWith('http')) return Promise.resolve(img)
+          return uploadBase64Image(img, userData.uid, `${timestamp}_${i}`)
+        })
+      )
+      console.log(`   📸 ${imageUrls.length} ta rasm Storage ga yuklandi`)
+    }
+
     // E'lon yaratish
     const docRef = await db.collection('items').add({
       telegramId,
@@ -325,7 +413,7 @@ app.post('/api/listings', async (req, res) => {
       description: description?.trim() || '',
       category: category || 'Libos',
       coinPrice: parseInt(coinPrice),
-      images: images || [],
+      images: imageUrls,
       size: size || '',
       condition: condition || 'Yaxshi',
       gender: gender || 'women',
@@ -540,70 +628,48 @@ app.post('/api/offers', async (req, res) => {
       return bt - at
     }
 
-    // ── NARX TAKLIFLARI ──────────────────────────────────────────────
-    // Sotuvchi: pending takliflarni qabul/rad qiladi
-    // Xaridor: pending (kutilmoqda) va accepted (sotib olish kerak) ko'radi
+    // Faol va tarix statuslar
+    const ACTIVE_OFFER  = ['pending', 'accepted']
+    const ACTIVE_ORDER  = ['pending_seller', 'pending', 'in_delivery']
+    const ACTIVE_SWAP   = ['pending']
+    const HISTORY_OFFER = ['declined', 'expired', 'purchased']
+    const HISTORY_ORDER = ['completed', 'cancelled', 'disputed']
+    const HISTORY_SWAP  = ['accepted', 'declined', 'cancelled']
+
+    // NARX TAKLIFLARI
     const seenOffers = new Set()
-    const priceOffers = [
-      ...offerAsSellerSnap.docs.map(d => ({
-        id: d.id, _myRole: 'seller', ...d.data()
-      })),
-      ...offerAsBuyerSnap.docs.map(d => ({
-        id: d.id, _myRole: 'buyer', ...d.data()
-      })),
-    ]
-      .filter(d => {
-        if (seenOffers.has(d.id)) return false
-        seenOffers.add(d.id)
-        // Sotuvchi: faqat pending ko'radi
-        if (d._myRole === 'seller') return d.status === 'pending'
-        // Xaridor: pending va accepted ko'radi (purchased/declined/expired emas)
-        if (d._myRole === 'buyer') return d.status === 'pending' || d.status === 'accepted'
-        return false
-      })
-      .sort(sortByDate)
-      .slice(0, 30)
+    const allPriceOffers = [
+      ...offerAsSellerSnap.docs.map(d => ({ id: d.id, _myRole: 'seller', ...d.data() })),
+      ...offerAsBuyerSnap.docs.map(d => ({ id: d.id, _myRole: 'buyer', ...d.data() })),
+    ].filter(d => { if (seenOffers.has(d.id)) return false; seenOffers.add(d.id); return true })
+     .sort(sortByDate).slice(0, 50)
 
-    // ── SOTISH BUYURTMALARI ──────────────────────────────────────────
-    // Sotuvchi: pending_seller → "Tasdiqlash" tugmasi
-    // Xaridor: in_delivery → "Qabul qildim" tugmasi
+    const priceOffers        = allPriceOffers.filter(d => ACTIVE_OFFER.includes(d.status))
+    const priceOffersHistory = allPriceOffers.filter(d => HISTORY_OFFER.includes(d.status))
+
+    // SOTISH BUYURTMALARI
     const seenOrders = new Set()
-    const saleOrders = [
-      ...orderAsSellerSnap.docs.map(d => ({
-        id: d.id, _myRole: 'seller', ...d.data()
-      })),
-      ...orderAsBuyerSnap.docs.map(d => ({
-        id: d.id, _myRole: 'buyer', ...d.data()
-      })),
-    ]
-      .filter(d => {
-        if (seenOrders.has(d.id)) return false
-        seenOrders.add(d.id)
-        if (d._myRole === 'seller') return d.status === 'pending_seller' || d.status === 'pending'
-        if (d._myRole === 'buyer') return d.status === 'in_delivery' || d.status === 'pending_seller' || d.status === 'pending'
-        return false
-      })
-      .sort(sortByDate)
-      .slice(0, 30)
+    const allSaleOrders = [
+      ...orderAsSellerSnap.docs.map(d => ({ id: d.id, _myRole: 'seller', ...d.data() })),
+      ...orderAsBuyerSnap.docs.map(d => ({ id: d.id, _myRole: 'buyer', ...d.data() })),
+    ].filter(d => { if (seenOrders.has(d.id)) return false; seenOrders.add(d.id); return true })
+     .sort(sortByDate).slice(0, 50)
 
-    // ── ALMASHINUV ───────────────────────────────────────────────────
+    const saleOrders        = allSaleOrders.filter(d => ACTIVE_ORDER.includes(d.status))
+    const saleOrdersHistory = allSaleOrders.filter(d => HISTORY_ORDER.includes(d.status))
+
+    // ALMASHINUV
     const seenSwaps = new Set()
-    const exchanges = [...swapsToSnap.docs, ...swapsFromSnap.docs]
-      .filter(d => {
-        if (seenSwaps.has(d.id)) return false
-        seenSwaps.add(d.id)
-        return true
-      })
-      .map(d => ({
-        id: d.id,
-        _myRole: d.data().toUserId === uid ? 'receiver' : 'sender',
-        ...d.data()
-      }))
-      .filter(d => d.status === 'pending')
-      .sort(sortByDate)
-      .slice(0, 30)
+    const allExchanges = [...swapsToSnap.docs, ...swapsFromSnap.docs]
+      .filter(d => { if (seenSwaps.has(d.id)) return false; seenSwaps.add(d.id); return true })
+      .map(d => ({ id: d.id, _myRole: d.data().toUserId === uid ? 'receiver' : 'sender', ...d.data() }))
+      .sort(sortByDate).slice(0, 50)
 
-    console.log(`   narx:${priceOffers.length} sotish:${saleOrders.length} almashinuv:${exchanges.length}`)
+    const exchanges        = allExchanges.filter(d => ACTIVE_SWAP.includes(d.status))
+    const exchangesHistory = allExchanges.filter(d => HISTORY_SWAP.includes(d.status))
+
+    console.log(`   faol — narx:${priceOffers.length} sotish:${saleOrders.length} almashinuv:${exchanges.length}`)
+    console.log(`   tarix — narx:${priceOffersHistory.length} sotish:${saleOrdersHistory.length} almashinuv:${exchangesHistory.length}`)
 
     res.json({
       success: true,
@@ -613,9 +679,11 @@ app.post('/api/offers', async (req, res) => {
         price:    priceOffers.length,
         total:    exchanges.length + saleOrders.length + priceOffers.length,
       },
-      data: { priceOffers, saleOrders, exchanges }
+      data: {
+        priceOffers, saleOrders, exchanges,
+        history: { priceOffers: priceOffersHistory, saleOrders: saleOrdersHistory, exchanges: exchangesHistory }
+      }
     })
-
   } catch (error) {
     console.error('❌ offers error:', error.message)
     res.json({
@@ -671,6 +739,16 @@ app.post('/api/orders', async (req, res) => {
     await itemDoc.ref.update({ status: 'reserved', updatedAt: admin.firestore.FieldValue.serverTimestamp() })
 
     console.log('Order yaratildi:', orderRef.id)
+    // Sotuvchiga bildirishnoma
+    const sellerTgForOrder = seller.telegramId || await getTelegramIdByUid(itemOwnerId)
+    await notify(sellerTgForOrder,
+      `🛍️ *Yangi buyurtma keldi!*\n\n` +
+      `🏷️ Mahsulot: *${item.title}*\n` +
+      `💰 Narx: *${item.coinPrice.toLocaleString()} koin*\n` +
+      `👤 Xaridor: *${buyer.fullName}*\n\n` +
+      `✅ Tasdiqlang va mahsulotni jo'nating!`,
+      [{ text: "📦 Buyurtmani ko'rish", url: `${MINI_APP_URL}/offers/sale` }]
+    )
     res.json({ success: true, orderId: orderRef.id, message: 'Buyurtma muvaffaqiyatli yuborildi!' })
   } catch (error) {
     console.error('order error:', error.message)
@@ -725,6 +803,16 @@ app.post('/api/swaps', async (req, res) => {
     })
 
     console.log('Swap yaratildi:', swapRef.id)
+    // Qabul qiluvchiga bildirishnoma
+    const toUserTg = await getTelegramIdByUid(toItemOwnerId)
+    await notify(toUserTg,
+      `🔄 *Yangi almashinuv taklifi keldi!*\n\n` +
+      `👗 Sizning: *${toItem.title}*\n` +
+      `👕 Taklif qildi: *${fromUser.fullName}*\n` +
+      `👕 Ularnikiː *${fromItem.title}*\n\n` +
+      `Qabul yoki rad qiling!`,
+      [{ text: "🔄 Taklifni ko'rish", url: `${MINI_APP_URL}/offers/exchange` }]
+    )
     res.json({ success: true, swapId: swapRef.id, message: 'Almashish taklifi yuborildi!' })
   } catch (error) {
     console.error('swap error:', error.message)
@@ -768,6 +856,17 @@ app.post('/api/price-offer', async (req, res) => {
     })
 
     console.log('Narx taklifi yaratildi:', offerRef.id)
+    // Sotuvchiga bildirishnoma
+    const sellerTgForOffer = await getTelegramIdByUid(itemOwnerId2)
+    await notify(sellerTgForOffer,
+      `🏷️ *Yangi narx taklifi keldi!*\n\n` +
+      `🏷️ Mahsulot: *${item.title}*\n` +
+      `💰 Asl narx: *${(item.coinPrice||0).toLocaleString()} koin*\n` +
+      `💸 Taklif narxi: *${offerPrice.toLocaleString()} koin*\n` +
+      `👤 Xaridor: *${buyer.fullName}*\n\n` +
+      `Qabul yoki rad qiling!`,
+      [{ text: "🏷️ Taklifni ko'rish", url: `${MINI_APP_URL}/offers/price` }]
+    )
     res.json({ success: true, offerId: offerRef.id, message: 'Narx taklifingiz yuborildi!' })
   } catch (error) {
     console.error('price-offer error:', error.message)
@@ -776,7 +875,42 @@ app.post('/api/price-offer', async (req, res) => {
 })
 
 // ═══════════════════════════════════════════════════════════════════
-// 13. OFFER AMALLAR: accept / decline / buy
+// 13. COIN SO'ROV — foydalanuvchi to'lov yuboradi, admin tasdiqlaydi
+// ═══════════════════════════════════════════════════════════════════
+app.post('/api/coin-request', async (req, res) => {
+  try {
+    const { initData, coins, bonus, price } = req.body
+    const telegramId = getTelegramIdFromInitData(initData)
+    if (!telegramId) return res.status(401).json({ success: false, error: 'Avtorizatsiya kerak' })
+
+    const userSnap = await db.collection('users').where('telegramId', '==', telegramId).limit(1).get()
+    if (userSnap.empty) return res.status(404).json({ success: false, error: 'User topilmadi' })
+    const userData = userSnap.docs[0].data()
+
+    await db.collection('coin_requests').add({
+      userId:      userData.uid,
+      telegramId,
+      fullName:    userData.fullName || '',
+      phoneNumber: userData.phoneNumber || '',
+      zoyaId:      userData.zoyaId || '',
+      coins:       parseInt(coins),
+      bonus:       parseInt(bonus) || 0,
+      totalCoins:  parseInt(coins) + (parseInt(bonus) || 0),
+      price:       parseInt(price),
+      status:      'pending',
+      createdAt:   admin.firestore.FieldValue.serverTimestamp(),
+    })
+
+    console.log(`🪙 Coin so'rov: ${userData.fullName} — ${coins} coin, ${price} so'm`)
+    res.json({ success: true })
+  } catch (e) {
+    console.error('coin-request error:', e.message)
+    res.status(500).json({ success: false, error: e.message })
+  }
+})
+
+// ═══════════════════════════════════════════════════════════════════
+// 14. OFFER AMALLAR: accept / decline / buy
 // ═══════════════════════════════════════════════════════════════════
 app.post('/api/offers/:id/:action', async (req, res) => {
   try {
@@ -809,6 +943,15 @@ app.post('/api/offers/:id/:action', async (req, res) => {
         purchaseDeadline: admin.firestore.Timestamp.fromDate(new Date(Date.now() + 48 * 3600 * 1000)),
       })
       console.log(`✅ Offer accepted: ${id}`)
+      // Xaridorga bildirishnoma
+      const buyerTgId = await getTelegramIdByUid(offer.buyerId)
+      await notify(buyerTgId,
+        `✅ *Narx taklifingiz qabul qilindi!*\n\n` +
+        `🏷️ Mahsulot: *${offer.itemTitle}*\n` +
+        `💰 Taklif narxi: *${(offer.offerPrice||0).toLocaleString()} koin*\n\n` +
+        `⏰ 48 soat ichida sotib oling!`,
+        [{ text: "🛍️ Sotib olish", url: `${MINI_APP_URL}/offers/price` }]
+      )
       return res.json({ success: true })
     }
 
@@ -817,6 +960,15 @@ app.post('/api/offers/:id/:action', async (req, res) => {
       if (offer.sellerId !== uid) return res.status(403).json({ success: false, error: 'Ruxsat yo\'q' })
       await offerRef.update({ status: 'declined', respondedAt: admin.firestore.FieldValue.serverTimestamp() })
       console.log(`❌ Offer declined: ${id}`)
+      // Xaridorga bildirishnoma
+      const buyerTgId = await getTelegramIdByUid(offer.buyerId)
+      await notify(buyerTgId,
+        `❌ *Narx taklifingiz rad etildi*\n\n` +
+        `🏷️ Mahsulot: *${offer.itemTitle}*\n` +
+        `💰 Taklif narxi: *${(offer.offerPrice||0).toLocaleString()} koin*\n\n` +
+        `Boshqa e'lonlarni ko'rib chiqing.`,
+        [{ text: "🔍 E'lonlar", url: `${MINI_APP_URL}` }]
+      )
       return res.json({ success: true })
     }
 
@@ -867,6 +1019,16 @@ app.post('/api/offers/:id/:action', async (req, res) => {
         txn.update(offerRef, { status: 'purchased', orderId: orderRef.id, purchasedAt: admin.firestore.FieldValue.serverTimestamp() })
       })
       console.log(`✅ Offer buy → order created: ${orderRef.id}`)
+      // Sotuvchiga bildirishnoma
+      const sellerTgId = await getTelegramIdByUid(sellerId)
+      await notify(sellerTgId,
+        `🛍️ *Yangi buyurtma keldi!*\n\n` +
+        `🏷️ Mahsulot: *${itemSnap.data().title}*\n` +
+        `💰 Narx: *${price.toLocaleString()} koin* (escrowda)\n` +
+        `👤 Xaridor: *${buyerData.fullName}*\n\n` +
+        `✅ Tasdiqlang va mahsulotni jo'nating!`,
+        [{ text: "📦 Buyurtmani ko'rish", url: `${MINI_APP_URL}/offers/sale` }]
+      )
       return res.json({ success: true, orderId: orderRef.id })
     }
 
@@ -903,6 +1065,15 @@ app.post('/api/orders/:id/:action', async (req, res) => {
         return res.status(400).json({ success: false, error: 'Buyurtma allaqachon tasdiqlangan' })
       await orderRef.update({ status: 'in_delivery', sellerConfirmedAt: admin.firestore.FieldValue.serverTimestamp() })
       console.log(`✅ Order confirmed: ${id}`)
+      // Xaridorga bildirishnoma
+      const buyerTgId2 = await getTelegramIdByUid(order.buyerId)
+      await notify(buyerTgId2,
+        `📦 *Mahsulot yo'lga chiqdi!*\n\n` +
+        `🏷️ Mahsulot: *${order.itemTitle}*\n` +
+        `👤 Sotuvchi: *${order.sellerName}*\n\n` +
+        `Mahsulotni olgach "Qabul qildim" tugmasini bosing — coinlar sotuvchiga o'tkaziladi.`,
+        [{ text: "✅ Qabul qildim", url: `${MINI_APP_URL}/offers/sale` }]
+      )
       return res.json({ success: true })
     }
 
@@ -941,6 +1112,15 @@ app.post('/api/orders/:id/:action', async (req, res) => {
         })
       })
       console.log(`✅ Order received → completed: ${id}, seller gets ${sellerReceives} coins`)
+      // Sotuvchiga bildirishnoma
+      const sellerTgId2 = await getTelegramIdByUid(order.sellerId)
+      await notify(sellerTgId2,
+        `🎉 *Sotildi! Coinlar hisobingizga o'tkazildi*\n\n` +
+        `🏷️ Mahsulot: *${order.itemTitle}*\n` +
+        `💰 Olgan summangiz: *${sellerReceives.toLocaleString()} koin*\n` +
+        `📊 Komissiya (2%): *${commission.toLocaleString()} koin*`,
+        [{ text: "👤 Profilim", url: `${MINI_APP_URL}/profile` }]
+      )
       return res.json({ success: true })
     }
 
@@ -964,6 +1144,16 @@ app.post('/api/orders/:id/:action', async (req, res) => {
         txn.update(orderRef, { status: 'cancelled', cancelledAt: admin.firestore.FieldValue.serverTimestamp(), escrowCoins: 0 })
       })
       console.log(`✅ Order cancelled: ${id}, ${price} coins refunded`)
+      // Sotuvchiga bildirishnoma (agar xaridor bekor qilsa)
+      if (uid === order.buyerId) {
+        const sellerTgId3 = await getTelegramIdByUid(order.sellerId)
+        await notify(sellerTgId3,
+          `❌ *Buyurtma bekor qilindi*\n\n` +
+          `🏷️ Mahsulot: *${order.itemTitle}*\n` +
+          `👤 Xaridor bekor qildi.\n\n` +
+          `E'lon yana faol holatga qaytdi.`
+        )
+      }
       return res.json({ success: true })
     }
 
@@ -1028,6 +1218,16 @@ app.post('/api/swaps/:id/:action', async (req, res) => {
         txn.update(db.collection('users').doc(swap.toUserId), { 'stats.totalExchanges': admin.firestore.FieldValue.increment(1) })
       })
       console.log(`✅ Swap accepted: ${id}`)
+      // Yuboruvchiga bildirishnoma
+      const fromTgId = await getTelegramIdByUid(swap.fromUserId)
+      await notify(fromTgId,
+        `🔄 *Almashinuv qabul qilindi!*\n\n` +
+        `👕 Siz: *${swap.fromItemTitle}*\n` +
+        `👗 Ularnikiː *${swap.toItemTitle}*\n` +
+        `👤 Qabul qildi: *${swap.toUserName}*\n\n` +
+        `${swap.coinDifference > 0 ? `💰 Farq: *${swap.coinDifference.toLocaleString()} koin* o'tkazildi\n\n` : ''}` +
+        `✅ Almashinuv yakunlandi — komissiyasiz!`
+      )
       return res.json({ success: true })
     }
 
@@ -1037,6 +1237,14 @@ app.post('/api/swaps/:id/:action', async (req, res) => {
         return res.status(403).json({ success: false, error: 'Ruxsat yo\'q' })
       await swapRef.update({ status: 'declined', declinedAt: admin.firestore.FieldValue.serverTimestamp() })
       console.log(`❌ Swap declined: ${id}`)
+      // Yuboruvchiga bildirishnoma
+      const fromTgId2 = await getTelegramIdByUid(swap.fromUserId)
+      await notify(fromTgId2,
+        `❌ *Almashinuv taklifi rad etildi*\n\n` +
+        `👕 Siz: *${swap.fromItemTitle}*\n` +
+        `👗 Ularnikiː *${swap.toItemTitle}*\n` +
+        `👤 Rad etdi: *${swap.toUserName}*`
+      )
       return res.json({ success: true })
     }
 
