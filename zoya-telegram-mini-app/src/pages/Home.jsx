@@ -62,9 +62,15 @@ export default function Home({ user }) {
 
   return (
     <div style={{ padding: '20px', marginBottom: '80px' }}>
-      <div style={{ marginBottom: '20px' }}>
-        <h1 style={{ color: '#007A6B', margin: '0 0 5px' }}>🏠 ZOYA</h1>
-        <p style={{ fontSize: '14px', color: '#999', margin: 0 }}>Salom {user.fullName}! 👋</p>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
+        <img
+          src="/logo.jpg"
+          alt="ZOYA"
+          style={{ height: 42, objectFit: 'contain' }}
+        />
+        <p style={{ fontSize: 13, color: '#555', margin: 0, fontWeight: 500 }}>
+          Salom, {user.fullName}! 👋
+        </p>
       </div>
 
       {listings.length === 0 ? (

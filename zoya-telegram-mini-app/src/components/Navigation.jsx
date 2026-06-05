@@ -1,14 +1,14 @@
 import { Link, useLocation } from 'react-router-dom'
 
 const NAV = [
-  { path: '/',         label: 'Bosh',     icon: '🏠' },
-  { path: '/my-listings', label: 'Mening', icon: '📋' },
-  { path: '/post',     label: 'E\'lon',   icon: '➕', center: true },
-  { path: '/offers',   label: 'Takliflar', icon: '🔔' },
-  { path: '/profile',  label: 'Profil',   icon: '👤' },
+  { path: '/',             label: 'Bosh',      icon: '🏠' },
+  { path: '/my-listings',  label: 'Mening',    icon: '📋' },
+  { path: '/post',         label: "E'lon",     icon: '➕', center: true },
+  { path: '/offers',       label: 'Takliflar', icon: '🛍️', badge: 'offer' },
+  { path: '/profile',      label: 'Profil',    icon: '👤', badge: 'notif' },
 ]
 
-export default function Navigation({ offerCount = 0 }) {
+export default function Navigation({ offerCount = 0, notifCount = 0 }) {
   const location = useLocation()
 
   return (
@@ -24,7 +24,9 @@ export default function Navigation({ offerCount = 0 }) {
         {NAV.map(item => {
           const isActive = location.pathname === item.path ||
             (item.path === '/offers' && location.pathname.startsWith('/offers'))
-          const showBadge = item.path === '/offers' && offerCount > 0
+          const badgeCount = item.badge === 'offer' ? offerCount
+            : item.badge === 'notif' ? notifCount : 0
+          const showBadge = badgeCount > 0
 
           return (
             <Link key={item.path} to={item.path} style={{
@@ -58,7 +60,7 @@ export default function Navigation({ offerCount = 0 }) {
                       fontSize: 9, fontWeight: 700, padding: '0 3px',
                       border: '1.5px solid white',
                     }}>
-                      {offerCount > 9 ? '9+' : offerCount}
+                      {badgeCount > 9 ? '9+' : badgeCount}
                     </span>
                   )}
                 </div>

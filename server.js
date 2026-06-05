@@ -64,22 +64,37 @@ async function uploadBase64Image(base64String, uid, filename) {
 const TG_TOKEN   = process.env.TELEGRAM_BOT_TOKEN
 const MINI_APP_URL = process.env.TELEGRAM_MINI_APP_URL || 'http://localhost:5173'
 
-async function notify(telegramId, text, buttons = []) {
-  if (!TG_TOKEN || !telegramId) return
+async function notify(telegramId, text, buttons = [], saveToFirestore = true) {
+  if (!telegramId) return
   try {
-    const body = {
-      chat_id:    telegramId,
-      text,
-      parse_mode: 'Markdown',
+    // 1. Telegram xabar yuborish
+    if (TG_TOKEN) {
+      const body = { chat_id: telegramId, text, parse_mode: 'Markdown' }
+      if (buttons.length > 0) body.reply_markup = { inline_keyboard: [buttons] }
+      await fetch(`https://api.telegram.org/bot${TG_TOKEN}/sendMessage`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      })
     }
-    if (buttons.length > 0) {
-      body.reply_markup = { inline_keyboard: [buttons] }
+
+    // 2. Firestore ga saqlash (Mini App da ko'rinsin)
+    if (saveToFirestore) {
+      const userSnap = await db.collection('users').where('telegramId', '==', telegramId).limit(1).get()
+      if (!userSnap.empty) {
+        const uid = userSnap.docs[0].data().uid
+        // Markdown belgilerini tozalash
+        const cleanText = text.replace(/\*/g, '').replace(/\n/g, ' ').trim()
+        await db.collection('notifications').add({
+          userId:    uid,
+          telegramId,
+          message:   cleanText,
+          rawText:   text,
+          isRead:    false,
+          createdAt: admin.firestore.FieldValue.serverTimestamp(),
+        })
+      }
     }
-    await fetch(`https://api.telegram.org/bot${TG_TOKEN}/sendMessage`, {
-      method:  'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body:    JSON.stringify(body),
-    })
   } catch (e) {
     console.error('notify error:', e.message)
   }
@@ -534,24 +549,47 @@ app.post('/api/notifications', async (req, res) => {
   try {
     const { initData } = req.body
     const telegramId = getTelegramIdFromInitData(initData)
+    if (!telegramId) return res.status(401).json({ success: false, error: 'Avtorizatsiya kerak' })
 
-    if (!telegramId) {
-      return res.status(401).json({ success: false, error: 'Avtorizatsiya kerak' })
-    }
-
-    const snapshot = await db
-      .collection('notifications')
+    const snapshot = await db.collection('notifications')
       .where('telegramId', '==', telegramId)
-      .orderBy('createdAt', 'desc')
-      .limit(20)
       .get()
+      .catch(() => ({ docs: [] }))
 
-    const notifications = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }))
-    res.json({ success: true, notifications })
+    const notifications = snapshot.docs
+      .map(doc => ({ id: doc.id, ...doc.data() }))
+      .sort((a, b) => (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0))
+      .slice(0, 30)
 
+    const unreadCount = notifications.filter(n => !n.isRead).length
+
+    res.json({ success: true, notifications, unreadCount })
   } catch (error) {
     console.error('❌ notifications error:', error.message)
     res.status(500).json({ success: false, error: error.message })
+  }
+})
+
+// Bildirishnomani o'qildi deb belgilash
+app.post('/api/notifications/read', async (req, res) => {
+  try {
+    const { initData, notificationId } = req.body
+    const telegramId = getTelegramIdFromInitData(initData)
+    if (!telegramId) return res.status(401).json({ success: false, error: 'Avtorizatsiya kerak' })
+
+    if (notificationId) {
+      // Bitta o'qildi
+      await db.collection('notifications').doc(notificationId).update({ isRead: true })
+    } else {
+      // Hammasini o'qildi
+      const snap = await db.collection('notifications').where('telegramId', '==', telegramId).where('isRead', '==', false).get()
+      const batch = db.batch()
+      snap.docs.forEach(doc => batch.update(doc.ref, { isRead: true }))
+      await batch.commit()
+    }
+    res.json({ success: true })
+  } catch (e) {
+    res.status(500).json({ success: false, error: e.message })
   }
 })
 

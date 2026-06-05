@@ -185,7 +185,53 @@ export default function Profile({ user, initData }) {
   const [showLangPicker, setShowLangPicker] = useState(false)
   const [copied, setCopied] = useState(false)
   const [offerCounts, setOfferCounts] = useState({ exchange: 0, sale: 0, price: 0 })
-  const [showBuyCoins, setShowBuyCoins] = useState(false)
+  const [showBuyCoins, setShowBuyCoins]       = useState(false)
+  const [notifications, setNotifications]     = useState([])
+  const [notifLoading, setNotifLoading]       = useState(false)
+  const [showNotifications, setShowNotifications] = useState(false)
+  const [unreadCount, setUnreadCount]         = useState(0)
+
+  // ── Bildirishnomalarni yuklash ──────────────────────────────────
+  const fetchNotifications = () => {
+    if (!initData) return
+    setNotifLoading(true)
+    fetch(`${API_URL}/api/notifications`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ initData })
+    })
+      .then(r => r.json())
+      .then(d => {
+        if (d.success) {
+          setNotifications(d.notifications || [])
+          setUnreadCount(d.unreadCount || 0)
+        }
+      })
+      .catch(() => {})
+      .finally(() => setNotifLoading(false))
+  }
+
+  const markAllRead = async () => {
+    await fetch(`${API_URL}/api/notifications/read`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ initData })
+    }).catch(() => {})
+    setNotifications(prev => prev.map(n => ({ ...n, isRead: true })))
+    setUnreadCount(0)
+  }
+
+  const markOneRead = async (id) => {
+    await fetch(`${API_URL}/api/notifications/read`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ initData, notificationId: id })
+    }).catch(() => {})
+    setNotifications(prev => prev.map(n => n.id === id ? { ...n, isRead: true } : n))
+    setUnreadCount(prev => Math.max(0, prev - 1))
+  }
+
+  useEffect(() => { fetchNotifications() }, [initData])
 
   // ── Takliflarni yuklash ──────────────────────────────────────
   useEffect(() => {
@@ -498,6 +544,86 @@ export default function Profile({ user, initData }) {
                 {lang===l.code && <span style={{marginLeft:'auto',color:'#0F5C42'}}>✓</span>}
               </button>
             ))}
+          </div>
+        )}
+      </div>
+
+      {/* ── BILDIRISHNOMALAR ── */}
+      <div style={{ marginBottom: 12 }}>
+        <button
+          onClick={() => { setShowNotifications(!showNotifications); if (!showNotifications) fetchNotifications() }}
+          style={{
+            width: '100%', padding: '12px 16px', background: 'white',
+            border: '1px solid #EAEEF2', borderRadius: 14, cursor: 'pointer',
+            display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            <span style={{ fontSize: 20 }}>🔔</span>
+            <span style={{ fontSize: 14, fontWeight: 600, color: '#1E2730' }}>Bildirishnomalar</span>
+            {unreadCount > 0 && (
+              <span style={{ background: '#EF4444', color: 'white', fontSize: 10, fontWeight: 700, borderRadius: 20, padding: '2px 8px' }}>
+                {unreadCount} yangi
+              </span>
+            )}
+          </div>
+          <span style={{ color: '#9AA5B4', fontSize: 16 }}>{showNotifications ? '▲' : '▼'}</span>
+        </button>
+
+        {showNotifications && (
+          <div style={{ background: 'white', borderRadius: '0 0 14px 14px', border: '1px solid #EAEEF2', borderTop: 'none', overflow: 'hidden' }}>
+            {unreadCount > 0 && (
+              <div style={{ padding: '8px 14px', borderBottom: '1px solid #F4F6F8', display: 'flex', justifyContent: 'flex-end' }}>
+                <button onClick={markAllRead} style={{ background: 'none', border: 'none', color: '#007A6B', fontSize: 12, fontWeight: 700, cursor: 'pointer' }}>
+                  Hammasini o'qildi ✓
+                </button>
+              </div>
+            )}
+            {notifLoading ? (
+              <div style={{ padding: 24, textAlign: 'center', color: '#9AA5B4', fontSize: 13 }}>Yuklanmoqda...</div>
+            ) : notifications.length === 0 ? (
+              <div style={{ padding: 24, textAlign: 'center' }}>
+                <p style={{ fontSize: 28, margin: '0 0 8px' }}>🔔</p>
+                <p style={{ fontSize: 13, color: '#9AA5B4', margin: 0 }}>Bildirishnoma yo'q</p>
+              </div>
+            ) : (
+              <div style={{ maxHeight: 360, overflowY: 'auto' }}>
+                {notifications.map(n => {
+                  const icons = ['🎉','✅','❌','📦','🔄','🏷️','🛍️']
+                  const icon  = icons.find(i => (n.message||'').includes(i)) || '🔔'
+                  const secs  = n.createdAt?.seconds
+                  const diff  = secs ? Math.floor(Date.now()/1000) - secs : 0
+                  const ago   = diff < 60 ? 'Hozirgina'
+                    : diff < 3600 ? `${Math.floor(diff/60)} daq oldin`
+                    : diff < 86400 ? `${Math.floor(diff/3600)} soat oldin`
+                    : `${Math.floor(diff/86400)} kun oldin`
+                  return (
+                    <div
+                      key={n.id}
+                      onClick={() => !n.isRead && markOneRead(n.id)}
+                      style={{
+                        padding: '11px 14px',
+                        borderBottom: '1px solid #F4F6F8',
+                        display: 'flex', gap: 10, alignItems: 'flex-start',
+                        background: n.isRead ? 'white' : '#F0FAF9',
+                        cursor: n.isRead ? 'default' : 'pointer',
+                      }}
+                    >
+                      <span style={{ fontSize: 18, flexShrink: 0 }}>{icon}</span>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <p style={{ margin: 0, fontSize: 12, lineHeight: 1.5, color: n.isRead ? '#666' : '#1E2730', fontWeight: n.isRead ? 400 : 500 }}>
+                          {n.message}
+                        </p>
+                        <p style={{ margin: '3px 0 0', fontSize: 10, color: '#C8D0D8' }}>{ago}</p>
+                      </div>
+                      {!n.isRead && (
+                        <div style={{ width: 7, height: 7, borderRadius: '50%', background: '#007A6B', flexShrink: 0, marginTop: 4 }} />
+                      )}
+                    </div>
+                  )
+                })}
+              </div>
+            )}
           </div>
         )}
       </div>
