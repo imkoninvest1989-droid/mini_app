@@ -1310,6 +1310,29 @@ app.get('/health', (req, res) => {
 })
 
 // ═══════════════════════════════════════════════════════════════════
+// 17. MINI APP STATIC FILES
+// ═══════════════════════════════════════════════════════════════════
+import { fileURLToPath } from 'url'
+import { dirname, join } from 'path'
+import fs from 'fs'
+
+const __filename = fileURLToPath(import.meta.url)
+const __dirname  = dirname(__filename)
+const distPath   = join(__dirname, 'zoya-telegram-mini-app', 'dist')
+
+if (fs.existsSync(distPath)) {
+  app.use(express.static(distPath))
+  app.get('*', (req, res) => {
+    if (!req.path.startsWith('/api') && !req.path.startsWith('/health')) {
+      res.sendFile(join(distPath, 'index.html'))
+    }
+  })
+  console.log('📱 Mini App static files served from dist/')
+} else {
+  console.log('⚠️  Mini App dist/ papkasi topilmadi')
+}
+
+// ═══════════════════════════════════════════════════════════════════
 // SERVER START
 // ═══════════════════════════════════════════════════════════════════
 app.listen(PORT, () => {
