@@ -179,7 +179,6 @@ async function uploadBase64Image(base64String, uid, filename) {
 // HELPER: Telegram bildirishnoma yuborish
 // ═══════════════════════════════════════════════════════════════════
 const TG_TOKEN   = process.env.TELEGRAM_BOT_TOKEN
-const MINI_APP_URL = process.env.TELEGRAM_MINI_APP_URL || 'http://localhost:5173'
 
 async function notify(telegramId, text, buttons = [], saveToFirestore = true) {
   if (!telegramId) return
