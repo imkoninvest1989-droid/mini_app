@@ -12,7 +12,7 @@ export default function Home({ user }) {
     
     const fetchListings = async () => {
       try {
-        const response = await fetch('http://localhost:3000/api/listings')
+        const response = await fetch('https://miniapp-production-6b94.up.railway.app/api/listings')
         
         console.log('📡 Response status:', response.status)
 

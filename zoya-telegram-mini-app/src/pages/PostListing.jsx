@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import axios from 'axios'
 import '../styles/PostListing.css'
 
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000'
+const API_URL = import.meta.env.VITE_API_URL || 'https://miniapp-production-6b94.up.railway.app'
 
 export default function PostListing({ user }) {
   const [formData, setFormData] = useState({

@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
 
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000'
+const API_URL = import.meta.env.VITE_API_URL || 'https://miniapp-production-6b94.up.railway.app'
 
 const TABS = [
   { key: 'exchange', label: 'Almashinuv', icon: '🔄' },

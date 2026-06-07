@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000'
+const API_URL = import.meta.env.VITE_API_URL || 'https://miniapp-production-6b94.up.railway.app'
 
 const STATUS = {
   active:    { label: 'Aktiv',       color: '#007A6B', bg: '#E8F5F3' },

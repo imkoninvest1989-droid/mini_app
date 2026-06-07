@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000'
+const API_URL = import.meta.env.VITE_API_URL || 'https://miniapp-production-6b94.up.railway.app'
 
 const ICONS = {
   '🛍️': '#FFF3E0', '✅': '#E8F5F3', '❌': '#FEF2F2',

@@ -28,7 +28,7 @@ function BuyCoinsModal({ user, initData, onClose }) {
   const sendReceipt = async () => {
     setLoading(true)
     try {
-      await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:3000'}/api/coin-request`, {
+      await fetch(`${import.meta.env.VITE_API_URL || 'https://miniapp-production-6b94.up.railway.app'}/api/coin-request`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ initData, coins: pkg.coins, bonus: pkg.bonus, price: pkg.price }),
@@ -171,7 +171,7 @@ function BuyCoinsModal({ user, initData, onClose }) {
   )
 }
 
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000'
+const API_URL = import.meta.env.VITE_API_URL || 'https://miniapp-production-6b94.up.railway.app'
 
 const LANGS = [
   { code: 'uz', label: "O'zbekcha", flag: '🇺🇿' },
