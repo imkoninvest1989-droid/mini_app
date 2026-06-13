@@ -98,7 +98,7 @@ bot.on('inline_query', async (query) => {
       const size      = item.size ? `  📐 ${item.size}` : ''
       const miniAppUrl = `${MINI_APP_URL}/listing/${item.id}`
       const caption = `👗 *${item.title}*\n\n💰 Narxi: *${price} koin*\n${condition}${size}\n👤 Sotuvchi: ${item.userName || "Noma'lum"}`
-      const keyboard = { inline_keyboard: [[{ text: "🛍️ ZOYA da ochish", url: miniAppUrl }]] }
+      const keyboard = { inline_keyboard: [[{ text: "🛍️ ZOYA da ochish", web_app: { url: miniAppUrl } }]] }
       const isValidUrl = image && image.startsWith('http')
       if (isValidUrl) {
         return { type: 'photo', id: item.id, photo_url: image, thumb_url: image, photo_width: 800, photo_height: 800, title: item.title, caption, parse_mode: 'Markdown', reply_markup: keyboard }
