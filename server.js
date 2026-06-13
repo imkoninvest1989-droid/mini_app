@@ -96,7 +96,7 @@ bot.on('inline_query', async (query) => {
       const price     = (item.coinPrice || 0).toLocaleString()
       const condition = item.condition === 'new' ? '🆕 Yangi' : item.condition === 'like_new' ? '✨ Yangiday' : '👕 Ishlatilgan'
       const size      = item.size ? `  📐 ${item.size}` : ''
-      const miniAppUrl = `${MINI_APP_URL}/listing/${item.id}`
+      const miniAppUrl = `https://t.me/${BOT_USERNAME}?startapp=item_${item.id}`
       const caption = `👗 *${item.title}*\n\n💰 Narxi: *${price} koin*\n${condition}${size}\n👤 Sotuvchi: ${item.userName || "Noma'lum"}`
       const keyboard = { inline_keyboard: [[{ text: "🛍️ ZOYA da ochish", url: miniAppUrl }]] }
       const isValidUrl = image && image.startsWith('http')
