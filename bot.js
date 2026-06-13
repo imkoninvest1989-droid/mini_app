@@ -197,7 +197,7 @@ bot.on('inline_query', async (query) => {
       const miniAppUrl = `${MINI_APP_URL}/listing/${item.id}`
       const keyboard = {
         inline_keyboard: [[
-          { text: "🛍️ ZOYA da ochish", web_app: { url: miniAppUrl } },
+          { text: "🛍️ ZOYA da ochish", url: miniAppUrl },
         ]]
       }
 
