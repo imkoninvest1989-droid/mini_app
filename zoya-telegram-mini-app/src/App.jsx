@@ -15,45 +15,67 @@ const API_URL = import.meta.env.VITE_API_URL || 'https://miniapp-production-6b94
 function RegisterModal({ onClose }) {
   return (
     <div style={{
-      position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)',
-      zIndex: 9999, display: 'flex', alignItems: 'flex-end'
-    }}>
-      <div style={{
-        background: 'white', borderRadius: '20px 20px 0 0',
-        width: '100%', padding: '28px 24px 40px',
-        fontFamily: "'DM Sans','Segoe UI',sans-serif"
-      }}>
-        <div style={{ textAlign: 'center', marginBottom: 20 }}>
-          <p style={{ fontSize: 44, margin: '0 0 10px' }}>🔐</p>
-          <p style={{ fontSize: 18, fontWeight: 700, color: '#1E2730', margin: '0 0 8px' }}>
-            Bu amal uchun ro'yxatdan o'ting
+      position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.65)',
+      zIndex: 9999, display: 'flex', alignItems: 'flex-end',
+    }} onClick={onClose}>
+      <div
+        onClick={e => e.stopPropagation()}
+        style={{
+          background: 'white', borderRadius: '24px 24px 0 0',
+          width: '100%', padding: '32px 24px 44px',
+          fontFamily: "'DM Sans','Segoe UI',sans-serif",
+        }}
+      >
+        {/* Chiziq */}
+        <div style={{ width: 40, height: 4, background: '#E5E7EB', borderRadius: 99, margin: '0 auto 24px' }} />
+
+        <div style={{ textAlign: 'center', marginBottom: 24 }}>
+          <p style={{ fontSize: 52, margin: '0 0 12px' }}>🔒</p>
+          <p style={{ fontSize: 19, fontWeight: 800, color: '#1E2730', margin: '0 0 10px', lineHeight: 1.3 }}>
+            Bu funksiyadan foydalanish uchun ro'yxatdan o'ting
           </p>
-          <p style={{ fontSize: 14, color: '#9AA5B4', margin: 0, lineHeight: 1.5 }}>
-            E'lon joylash, sotib olish va almashinuv uchun akkaunt kerak
+          <p style={{ fontSize: 14, color: '#6B7280', margin: 0, lineHeight: 1.6 }}>
+            Ro'yxatdan o'tish <strong>10 soniya</strong> vaqt oladi va mutlaqo <strong>bepul</strong>.
           </p>
+        </div>
+
+        {/* Afzalliklar */}
+        <div style={{ background: '#F0FAF5', borderRadius: 14, padding: '14px 16px', marginBottom: 20 }}>
+          {[
+            { icon: '📸', text: "Kiyimlaringizni e'lon qiling" },
+            { icon: '🔄', text: 'Boshqalar bilan almashing' },
+            { icon: '🛍️', text: 'Arzon narxda sotib oling' },
+          ].map((item, i) => (
+            <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: i < 2 ? 8 : 0 }}>
+              <span style={{ fontSize: 18 }}>{item.icon}</span>
+              <span style={{ fontSize: 13, color: '#374151', fontWeight: 500 }}>{item.text}</span>
+            </div>
+          ))}
         </div>
 
         <a
           href="https://t.me/Zoya_app_bot"
           style={{
-            display: 'block', width: '100%', padding: '14px',
-            background: '#007A6B', color: 'white', borderRadius: 14,
-            textDecoration: 'none', textAlign: 'center',
-            fontSize: 15, fontWeight: 700, boxSizing: 'border-box',
+            display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
+            width: '100%', padding: '15px',
+            background: '#007A6B', color: 'white', borderRadius: 16,
+            textDecoration: 'none', fontSize: 16, fontWeight: 700,
+            boxSizing: 'border-box',
           }}
         >
-          📱 Botda ro'yxatdan o'tish
+          📱 Telefon raqamni ulash
         </a>
 
         <button
           onClick={onClose}
           style={{
-            display: 'block', width: '100%', padding: '12px',
+            display: 'block', width: '100%', padding: '13px',
             background: 'none', border: 'none', color: '#9AA5B4',
-            fontSize: 14, cursor: 'pointer', marginTop: 10,
+            fontSize: 14, cursor: 'pointer', marginTop: 8,
+            fontWeight: 500,
           }}
         >
-          Keyinroq
+          ❌ Bekor qilish
         </button>
       </div>
     </div>
