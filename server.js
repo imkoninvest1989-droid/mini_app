@@ -96,7 +96,7 @@ bot.on('inline_query', async (query) => {
       const price     = (item.coinPrice || 0).toLocaleString()
       const condition = item.condition === 'new' ? '🆕 Yangi' : item.condition === 'like_new' ? '✨ Yangiday' : '👕 Ishlatilgan'
       const size      = item.size ? `  📐 ${item.size}` : ''
-      const miniAppUrl = `https://t.me/${BOT_USERNAME}?startapp=item_${item.id}`
+      const miniAppUrl = `${MINI_APP_URL}/listing/${item.id}`
       const caption = `👗 *${item.title}*\n\n💰 Narxi: *${price} koin*\n${condition}${size}\n👤 Sotuvchi: ${item.userName || "Noma'lum"}`
       const keyboard = { inline_keyboard: [[{ text: "🛍️ ZOYA da ochish", url: miniAppUrl }]] }
       const isValidUrl = image && image.startsWith('http')
@@ -282,11 +282,17 @@ app.post('/api/auth/telegram-login', async (req, res) => {
         .get()
 
       if (snapshot.empty) {
-        console.log(`   ❌ telegramId topilmadi — bot orqali bog'lash kerak`)
-        return res.status(404).json({
-          success: false,
-          requiresBotLink: true,
-          error: 'Akkauntingiz bog\'lanmagan. Botda /start bosib, telefon raqamingizni ulang.'
+        console.log(`   ❌ telegramId topilmadi — kuzatuvchi sifatida kiradi`)
+        // Statistika: guest kirish
+        db.collection('bot_visits').add({
+          telegramId: tgId,
+          source: 'guest_mini_app',
+          createdAt: admin.firestore.FieldValue.serverTimestamp(),
+        }).catch(() => {})
+        return res.json({
+          success: true,
+          isGuest: true,
+          user: null,
         })
       }
 
@@ -1414,6 +1420,47 @@ app.post('/api/swaps/:id/:action', async (req, res) => {
     return res.status(400).json({ success: false, error: `Noma'lum amal: ${action}` })
   } catch (e) {
     console.error('swap action error:', e.message)
+    res.status(500).json({ success: false, error: e.message })
+  }
+})
+
+// ═══════════════════════════════════════════════════════════════════
+// STATISTIKA — bot tashrif va urinishlarni saqlash
+// ═══════════════════════════════════════════════════════════════════
+app.post('/api/stats/visit', async (req, res) => {
+  try {
+    const { telegramId, firstName, lastName, username, phoneNumber, source } = req.body
+    await db.collection('bot_visits').add({
+      telegramId: telegramId || null,
+      firstName:  firstName  || null,
+      lastName:   lastName   || null,
+      username:   username   || null,
+      phoneNumber: phoneNumber || null,
+      source,
+      createdAt: admin.firestore.FieldValue.serverTimestamp(),
+    })
+    res.json({ success: true })
+  } catch (e) {
+    res.json({ success: false })
+  }
+})
+
+// Admin statistika ko'rish
+app.get('/api/stats/summary', async (req, res) => {
+  try {
+    const snap = await db.collection('bot_visits').get()
+    const docs = snap.docs.map(d => d.data())
+    const summary = {
+      total_visits:     docs.filter(d => d.source === 'start').length,
+      guest_opens:      docs.filter(d => d.source === 'guest_mini_app').length,
+      register_attempts: docs.filter(d => d.source === 'register_attempt').length,
+      phone_sent:       docs.filter(d => d.source === 'phone_sent').length,
+      login_success:    docs.filter(d => d.source === 'login_success').length,
+      not_found:        docs.filter(d => d.source === 'not_found').length,
+      unique_users:     new Set(docs.map(d => d.telegramId).filter(Boolean)).size,
+    }
+    res.json({ success: true, summary, total: docs.length })
+  } catch (e) {
     res.status(500).json({ success: false, error: e.message })
   }
 })

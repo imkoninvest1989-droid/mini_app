@@ -3,7 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom'
 
 const API_URL = import.meta.env.VITE_API_URL || 'https://miniapp-production-6b94.up.railway.app'
 
-export default function ListingDetail({ user, initData }) {
+export default function ListingDetail({ user, isGuest, initData }) {
   const { id } = useParams()
   const navigate = useNavigate()
   const [listing, setListing] = useState(null)
@@ -203,6 +203,7 @@ function BuyModal({ listing, user, initData, canAfford, onClose, onSuccess }) {
   const [error, setError] = useState(null)
 
   const handleBuy = async () => {
+    if (isGuest) { window.__zoyaAuth?.showRegister?.(); return }
     setLoading(true); setError(null)
     try {
       const r = await fetch(`${API_URL}/api/orders`, {
@@ -276,6 +277,7 @@ function SwapModal({ listing, user, initData, onClose, onSuccess }) {
   }, [])
 
   const handleSwap = async () => {
+    if (isGuest) { window.__zoyaAuth?.showRegister?.(); return }
     if (!selected) return
     setLoading(true); setError(null)
     try {
@@ -389,6 +391,7 @@ function PriceModal({ listing, user, initData, onClose, onSuccess }) {
   const isValid = offerPrice > 0 && offerPrice < listing.coinPrice
 
   const handleOffer = async () => {
+    if (isGuest) { window.__zoyaAuth?.showRegister?.(); return }
     setLoading(true); setError(null)
     try {
       const r = await fetch(`${API_URL}/api/price-offer`, {
