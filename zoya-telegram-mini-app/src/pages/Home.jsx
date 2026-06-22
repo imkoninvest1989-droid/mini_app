@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 
-export default function Home({ user }) {
+export default function Home({ user, isGuest, initData }) {
   const [listings, setListings] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
@@ -69,7 +69,7 @@ export default function Home({ user }) {
           style={{ height: 42, objectFit: 'contain' }}
         />
         <p style={{ fontSize: 13, color: '#555', margin: 0, fontWeight: 500 }}>
-          Salom, {user.fullName}! 👋
+          Salom, {user?.fullName || 'Mehmon'}! 👋
         </p>
       </div>
 
