@@ -96,18 +96,21 @@ function AppContent() {
   const [offerCount, setOfferCount] = useState(0)
   const [showRegisterModal, setShowRegisterModal] = useState(false)
 
-  // Global ga chiqarish — barcha sahifalar foydalanadi
+  // Global ga chiqarish — render har safar yangilanadi
   window.__zoyaAuth = {
     user, isGuest, initData,
     showRegister: () => setShowRegisterModal(true),
   }
+  // showRegisterModal state dan mustaqil funksiya sifatida ham saqlash
+  window.__showRegister = () => setShowRegisterModal(true)
 
   useEffect(() => {
     const initUser = async () => {
       try {
         const tg = window.Telegram?.WebApp
         if (!tg?.initData) {
-          setError('Bu app faqat Telegram orqali ochiladi')
+          // Telegram WebApp bo'lmasa — kuzatuvchi sifatida kir
+          setIsGuest(true)
           setLoading(false)
           return
         }

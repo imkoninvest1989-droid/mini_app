@@ -203,7 +203,7 @@ function BuyModal({ listing, user, initData, canAfford, onClose, onSuccess }) {
   const [error, setError] = useState(null)
 
   const handleBuy = async () => {
-    if (isGuest) { window.__zoyaAuth?.showRegister?.(); return }
+    if (isGuest) { window.__showRegister?.(); return }
     setLoading(true); setError(null)
     try {
       const r = await fetch(`${API_URL}/api/orders`, {
@@ -277,7 +277,7 @@ function SwapModal({ listing, user, initData, onClose, onSuccess }) {
   }, [])
 
   const handleSwap = async () => {
-    if (isGuest) { window.__zoyaAuth?.showRegister?.(); return }
+    if (isGuest) { window.__showRegister?.(); return }
     if (!selected) return
     setLoading(true); setError(null)
     try {
@@ -391,7 +391,7 @@ function PriceModal({ listing, user, initData, onClose, onSuccess }) {
   const isValid = offerPrice > 0 && offerPrice < listing.coinPrice
 
   const handleOffer = async () => {
-    if (isGuest) { window.__zoyaAuth?.showRegister?.(); return }
+    if (isGuest) { window.__showRegister?.(); return }
     setLoading(true); setError(null)
     try {
       const r = await fetch(`${API_URL}/api/price-offer`, {

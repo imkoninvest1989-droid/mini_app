@@ -341,13 +341,12 @@ function SaleOrderCard({ item, initData, onRefresh, isHistory }) {
 // ── Asosiy sahifa ─────────────────────────────────────────────────────
 export default function Offers({ user, isGuest, initData, onRead }) {
   if (isGuest) {
-    const { showRegister } = window.__zoyaAuth || {}
-    return (
+        return (
       <div style={{ display:'flex', flexDirection:'column', justifyContent:'center', alignItems:'center', height:'80vh', textAlign:'center', padding:32, gap:16, fontFamily:"'DM Sans',sans-serif" }}>
         <p style={{ fontSize:48, margin:0 }}>🛍️</p>
         <p style={{ fontSize:17, fontWeight:700, color:'#1E2730', margin:0 }}>Takliflar</p>
         <p style={{ fontSize:14, color:'#9AA5B4', margin:0 }}>Taklif yuborish va qabul qilish uchun akkaunt kerak</p>
-        <button onClick={() => showRegister?.()} style={{ padding:'13px 28px', background:'#007A6B', color:'white', border:'none', borderRadius:14, fontSize:15, fontWeight:700, cursor:'pointer', width:'100%' }}>
+        <button onClick={() => window.__showRegister?.()} style={{ padding:'13px 28px', background:'#007A6B', color:'white', border:'none', borderRadius:14, fontSize:15, fontWeight:700, cursor:'pointer', width:'100%' }}>
           📱 Ro'yxatdan o'tish
         </button>
       </div>
