@@ -37,22 +37,38 @@ const BOT_USERNAME = process.env.BOT_USERNAME || 'Zoya_app_bot'
 const bot = new TelegramBot(BOT_TOKEN, { polling: true })
 console.log('🤖 ZOYA Bot ishga tushdi...')
 
-// /start
-bot.onText(/\/start(.*)/, (msg, match) => {
-  const chatId    = msg.chat.id
-  const firstName = msg.from.first_name || 'Foydalanuvchi'
-  const param     = (match[1] || '').trim()
+// /start — darhol Mini App tugmasi
+bot.onText(/\/start(.*)/, async (msg, match) => {
+  const chatId     = msg.chat.id
+  const firstName  = msg.from.first_name || 'Foydalanuvchi'
+  const telegramId = msg.from.id.toString()
+  const param      = (match[1] || '').trim()
 
+  // Statistika
+  axios.post(`${BACKEND_URL}/api/stats/visit`, {
+    telegramId, firstName,
+    lastName: msg.from.last_name || '',
+    username: msg.from.username  || '',
+    source: 'start',
+  }).catch(() => {})
+
+  // Deep link
   if (param.startsWith('item_')) {
-    const itemId  = param.replace('item_', '')
-    const itemUrl = `${MINI_APP_URL}/listing/${itemId}`
-    return bot.sendMessage(chatId, `👗 E'lonni ko'rish uchun quyidagi tugmani bosing:`, {
-      reply_markup: { inline_keyboard: [[{ text: "🛍️ ZOYA da ko'rish", web_app: { url: itemUrl } }]] }
+    return bot.sendMessage(chatId, `👗 E'lonni ko'rish uchun:`, {
+      reply_markup: { inline_keyboard: [[{ text: "🛍️ ZOYA da ko'rish", web_app: { url: MINI_APP_URL } }]] }
     })
   }
+
   bot.sendMessage(chatId,
-    `Salom ${firstName}! 👋\n\nZOYA kiyim almashish platformasiga xush kelibsiz!\n\n📱 Telefon raqamingizni ulang — shunda ilovadagi akkauntingiz bot bilan bog'lanadi.`,
-    { reply_markup: { keyboard: [[{ text: '📱 Telefon raqamimni ulash', request_contact: true }]], one_time_keyboard: true, resize_keyboard: true } }
+    `👋 ZOYAga xush kelibsiz!\n\nBu yerda siz o'z kiyimlaringizni mutlaqo *bepul* va *xavfsiz* almashtirishingiz mumkin.\n\n👇 Quyidagi tugmani bosing va kiyimlar katalogini hoziroq tomosha qiling:`,
+    {
+      parse_mode: 'Markdown',
+      reply_markup: {
+        inline_keyboard: [[
+          { text: "🛍️ Kiyimlarni ko'rish", web_app: { url: MINI_APP_URL } }
+        ]]
+      }
+    }
   )
 })
 
@@ -62,23 +78,53 @@ bot.on('contact', async (msg) => {
   const phoneNumber = msg.contact.phone_number
   const telegramId  = msg.from.id.toString()
   const firstName   = msg.from.first_name || ''
-  const lastName    = msg.from.last_name || ''
-  const username    = msg.from.username || ''
+  const lastName    = msg.from.last_name  || ''
+  const username    = msg.from.username   || ''
+
   console.log(`\n📞 Contact: ${phoneNumber} TG:${telegramId}`)
+
+  axios.post(`${BACKEND_URL}/api/stats/visit`, {
+    telegramId, firstName, phoneNumber, source: 'phone_sent',
+  }).catch(() => {})
+
+  const loadingMsg = await bot.sendMessage(chatId, '⏳ Tekshirilmoqda...')
+
   try {
-    const response = await axios.post(`${BACKEND_URL}/api/auth/telegram-login`, { phoneNumber, telegramId, firstName, lastName, username })
+    const response = await axios.post(`${BACKEND_URL}/api/auth/telegram-login`, {
+      phoneNumber, telegramId, firstName, lastName, username,
+    })
     const { user } = response.data
-    await bot.sendMessage(chatId, '✅ Akkauntingiz topildi!', { reply_markup: { remove_keyboard: true } })
-    bot.sendMessage(chatId,
-      `👤 ${user.fullName}\n📱 ${user.phoneNumber}\n💰 Balans: ${user.balance?.coins || 0} koin\n\nEndi Mini App dan foydalanishingiz mumkin!`,
-      { reply_markup: { inline_keyboard: [[{ text: '🛍️ ZOYA Mini App', web_app: { url: MINI_APP_URL } }]] } }
+    bot.deleteMessage(chatId, loadingMsg.message_id).catch(() => {})
+    await bot.sendMessage(chatId,
+      `✅ Tabriklaymiz, ${user.fullName}!\n\nAkkauntingiz muvaffaqiyatli ulandi.\n💰 Balans: *${(user.balance?.coins || 0).toLocaleString()} koin*\n\nEndi e'lon joylash, almashtirish va sotib olish imkoniyatingiz bor!`,
+      {
+        parse_mode: 'Markdown',
+        reply_markup: {
+          inline_keyboard: [[{ text: '🛍️ ZOYA Mini App', web_app: { url: MINI_APP_URL } }]],
+          remove_keyboard: true
+        }
+      }
     )
+    axios.post(`${BACKEND_URL}/api/stats/visit`, {
+      telegramId, firstName, phoneNumber, source: 'login_success',
+    }).catch(() => {})
   } catch (error) {
-    const status  = error.response?.status
-    const message = error.response?.data?.error || error.message
-    console.error(`❌ telegram-login error ${status}: ${message}`)
+    const status = error.response?.status
+    bot.deleteMessage(chatId, loadingMsg.message_id).catch(() => {})
+    axios.post(`${BACKEND_URL}/api/stats/visit`, {
+      telegramId, firstName, phoneNumber, source: status === 404 ? 'not_found' : 'error',
+    }).catch(() => {})
     if (status === 404) {
-      bot.sendMessage(chatId, `❌ Bu raqam ZOYA ilovasida topilmadi.\n\nAvval ilovani yuklab, ro'yxatdan o'ting:\n👉 @zoya_app`, { reply_markup: { remove_keyboard: true } })
+      bot.sendMessage(chatId,
+        `📱 Siz hali ZOYA ilovasida ro'yxatdan o'tmagansiz.\n\nIlova hozirda *test rejimida* — tez orada hammaga ochiladi!\n\nHozircha kiyimlar katalogini ko'rishingiz mumkin 👇`,
+        {
+          parse_mode: 'Markdown',
+          reply_markup: {
+            inline_keyboard: [[{ text: "🛍️ Kiyimlarni ko'rish", web_app: { url: MINI_APP_URL } }]],
+            remove_keyboard: true
+          }
+        }
+      )
     } else {
       bot.sendMessage(chatId, `❌ Xato yuz berdi. Qaytadan urinib ko'ring: /start`)
     }
@@ -97,46 +143,32 @@ bot.on('inline_query', async (query) => {
       const condition = item.condition === 'new' ? '🆕 Yangi' : item.condition === 'like_new' ? '✨ Yangiday' : '👕 Ishlatilgan'
       const size      = item.size ? `  📐 ${item.size}` : ''
       const miniAppUrl = `${MINI_APP_URL}/listing/${item.id}`
-      const caption = `👗 *${item.title}*\n\n💰 Narxi: *${price} koin*\n${condition}${size}\n👤 Sotuvchi: ${item.userName || "Noma'lum"}`
+      const caption = `👗 *${item.title}*\n\n💰 Narxi: *${price} koin*\n${condition}${size}\n👤 ${item.userName || "Noma'lum"}`
       const keyboard = { inline_keyboard: [[{ text: "🛍️ ZOYA da ochish", url: miniAppUrl }]] }
       const isValidUrl = image && image.startsWith('http')
       if (isValidUrl) {
         return { type: 'photo', id: item.id, photo_url: image, thumb_url: image, photo_width: 800, photo_height: 800, title: item.title, caption, parse_mode: 'Markdown', reply_markup: keyboard }
-      } else {
-        return { type: 'article', id: item.id, title: `${item.title} — ${price} koin`, description: `${condition}${size}`, input_message_content: { message_text: caption, parse_mode: 'Markdown' }, reply_markup: keyboard }
       }
+      return { type: 'article', id: item.id, title: `${item.title} — ${price} koin`, description: `${condition}${size}`, input_message_content: { message_text: caption, parse_mode: 'Markdown' }, reply_markup: keyboard }
     })
-    console.log(`🔍 Inline: "${queryText}" → ${results.length} ta natija`)
     await bot.answerInlineQuery(query.id, results, { cache_time: 0, is_personal: true })
   } catch (error) {
-    console.error('inline_query error:', error.message)
     await bot.answerInlineQuery(query.id, [], { cache_time: 5 })
   }
 })
 
-// /profile
-bot.onText(/\/profile/, async (msg) => {
-  const chatId = msg.chat.id
-  const telegramId = msg.from.id.toString()
-  try {
-    const response = await axios.post(`${BACKEND_URL}/api/user-profile`, { initData: `user=${JSON.stringify({ id: parseInt(telegramId) })}` })
-    const { user } = response.data
-    bot.sendMessage(chatId,
-      `👤 ${user.fullName}\n📱 ${user.phoneNumber}\n💰 ${user.balance?.coins || 0} koin\n⭐ Reyting: ${user.stats?.rating || 0}`,
-      { reply_markup: { inline_keyboard: [[{ text: '🛍️ Mini App', web_app: { url: MINI_APP_URL } }]] } }
-    )
-  } catch { bot.sendMessage(chatId, '❌ Profil topilmadi. /start bosing.') }
-})
-
 bot.onText(/\/help/, (msg) => {
-  bot.sendMessage(msg.chat.id, `/start — Boshlash\n/profile — Profilim\n/help — Yordam`,
-    { reply_markup: { inline_keyboard: [[{ text: '🛍️ Mini App', web_app: { url: MINI_APP_URL } }]] } }
-  )
+  bot.sendMessage(msg.chat.id, `/start — Boshlash\n/help — Yordam`, {
+    reply_markup: { inline_keyboard: [[{ text: "🛍️ Kiyimlarni ko'rish", web_app: { url: MINI_APP_URL } }]] }
+  })
 })
 
 bot.on('message', (msg) => {
   if (msg.contact || msg.text?.startsWith('/')) return
-  bot.sendMessage(msg.chat.id, 'Boshlash uchun /start yozing.')
+  bot.sendMessage(msg.chat.id,
+    `👋 Boshlash uchun /start yozing yoki quyidagi tugmani bosing:`,
+    { reply_markup: { inline_keyboard: [[{ text: "🛍️ Kiyimlarni ko'rish", web_app: { url: MINI_APP_URL } }]] } }
+  )
 })
 
 bot.on('polling_error', (error) => { console.error('🔴 Polling xatosi:', error.message) })
